@@ -25,10 +25,11 @@ st.set_page_config(page_title="Aktsiaanalüüs", page_icon="📈", layout="wide"
 st.markdown(f"<style>{(Path(__file__).parent / 'style.css').read_text()}</style>", unsafe_allow_html=True)
 
 # Värvid (valideeritud kategooriline palett) + staatusvärvid
-BLUE, ORANGE, AQUA, VIOLET, YELLOW = "#2a78d6", "#eb6834", "#1baf7a", "#6250d6", "#eda100"
-UP, DOWN, NEUTRAL = "#1baf7a", "#e34948", "#94a3b8"
+BLUE, ORANGE, AQUA, VIOLET, YELLOW = "#3b82f6", "#f97316", "#10b981", "#8b5cf6", "#f59e0b"
+UP, DOWN, NEUTRAL = "#10b981", "#f43f5e", "#94a3b8"
 SIG_TONE = {"OST": "up", "KERGE OST": "up", "HOIA": "flat", "KERGE MÜÜK": "down", "MÜÜ": "down"}
-TONE_COLOR = {"up": "#0f8a4c", "down": "#c9302f", "flat": "#475569"}
+TONE_COLOR = {"up": "#059669", "down": "#e11d48", "flat": "#64748b"}
+TONE_TINT = {"up": "#ecfdf5", "down": "#fff1f3", "flat": "#f5f8fd"}
 SIGNAL_ICON = {"OST": "▲▲", "KERGE OST": "▲", "HOIA": "■", "KERGE MÜÜK": "▼", "MÜÜ": "▼▼"}
 
 # Ühtne graafikute stiil
@@ -168,7 +169,7 @@ def sig_card(label, v, price, cur):
     mid = max(0, min(100, (v["mid"] - v["low"]) / span * 100)) if span else 50
     er = v["exp_ret"]
     return f"""
-<div class="card sig" style="--accent:{accent}">
+<div class="card sig" style="--accent:{accent};--tint:{TONE_TINT[t]}">
   <div class="top"><span class="h">{esc(label)}</span><span class="conf">kindlus: {esc(v['confidence'])}</span></div>
   <div class="label">{SIGNAL_ICON[v['signal']]} {v['signal']}</div>
   <div class="meter"><div class="dot" style="left:{dot:.1f}%"></div></div>
@@ -185,7 +186,7 @@ def sig_card(label, v, price, cur):
 
 
 def factor_rows(items, positive):
-    color = "#1baf7a" if positive else "#e34948"
+    color = UP if positive else DOWN
     out = []
     for grp, _nm, s, txt in items:
         w = min(100, abs(s) * 100)
@@ -220,7 +221,7 @@ with search_col:
     if st_searchbox is not None:
         picked = st_searchbox(
             search_cached,
-            label="Otsi aktsiat",
+            label=None,
             placeholder="🔎  Kirjuta nimi või ticker – nt apple, nvidia, lhv",
             key="aktsia_otsing",
             debounce=300,
@@ -264,7 +265,7 @@ ed = data.get("earnings_date")
 ed_days = (ed - pd.Timestamp.today().normalize()).days if ed is not None else None
 
 st.markdown(f"""
-<div class="card" style="margin-top:14px">
+<div class="card hero-card" style="margin-top:14px">
  <div class="hero">
   <div class="hero-left"><div class="avatar">{esc(initials)}</div>
    <div><div class="name">{esc(name)}</div>
@@ -288,23 +289,51 @@ st.markdown(f"""
 for w in res["warnings"]:
     st.markdown(f"<div class='note'>⚠️ <div>{esc(w)}</div></div>", unsafe_allow_html=True)
 
-# Kokkuvõte ühe pilguga
+# Kokkuvõte ühe pilguga, lihtsas keeles
 facs = sorted(res["factors"], key=lambda f: f[2], reverse=True)
-pos = [f for f in facs if f[2] > 0.05][:7]
-neg = [f for f in facs[::-1] if f[2] < -0.05][:7]
+pos = [f for f in facs if f[2] > 0.05][:5]
+neg = [f for f in facs[::-1] if f[2] < -0.05][:5]
+
+
+def plain_summary(res, info, price):
+    """Lühike seletus tavakeeles: mis on peamised põhjused."""
+    g = res["groups"]
+    out = []
+    tl, fu = g.get("tech_long"), g.get("fund")
+    if tl is not None and tl <= -0.4:
+        out.append("Aktsia on viimastel kuudel palju tõusnud ja on oma tavatasemest kõrgel. "
+                   "Ajalooliselt on sellisele tõusule sageli järgnenud jahtumine.")
+    elif tl is not None and tl >= 0.4:
+        out.append("Aktsia on viimastel kuudel palju langenud ja on oma tavatasemest madalal. "
+                   "Ajalooliselt on sellisele langusele sageli järgnenud taastumine.")
+    if fu is not None and fu >= 0.3:
+        out.append("Ettevõtte numbrid (kasv ja kasumlikkus) on tugevad.")
+    elif fu is not None and fu <= -0.15:
+        out.append("Ettevõtte numbrid on nõrgad: hind on kõrge või kasumlikkus kehv.")
+    t = info.get("targetMeanPrice")
+    if t:
+        u = t / price - 1
+        if u >= 0.15:
+            out.append(f"Analüütikud näevad 12 kuuga tõusuruumi {u * 100:.0f}%.")
+        elif u < 0:
+            out.append("Hind on juba analüütikute keskmisest hinnasihist kõrgemal.")
+    if res["views"]["12 nädalat"]["confidence"] == "madal":
+        out.append("Signaalid on omavahel vastuolus, seega on kindlus madal.")
+    return " ".join(out) or "Selgeid tugevaid signaale ei ole – pilt on neutraalne."
+
+
+main = res["views"]["12 nädalat"]
+vt = SIG_TONE[main["signal"]]
 pills = "".join(f"<span style='color:var(--ink2);font-size:13px;margin-left:6px'>{esc(l)}</span>{sig_pill(v['signal'])}"
                 for l, v in res["views"].items())
-why = []
-if pos:
-    why.append(f"Suurim pluss: <b>{esc(pos[0][3])}</b>")
-if neg:
-    why.append(f"suurim miinus: <b>{esc(neg[0][3])}</b>")
-st.markdown(f"""<div class="verdict"><div class="row"><span class="lbl">Kokkuvõte</span>{pills}</div>
-<div class="why">{'; '.join(why)}.</div></div>""", unsafe_allow_html=True)
+st.markdown(f"""<div class="verdict" style="--vc:{TONE_COLOR[vt]}">
+<div class="head">Järgmise 3 kuu vaade: <span>{SIGNAL_ICON[main['signal']]} {main['signal']}</span></div>
+<div class="plain">{esc(plain_summary(res, info, price))}</div>
+<div class="row">{pills}</div></div>""", unsafe_allow_html=True)
 
-tabs = st.tabs(["📊 Ülevaade", "💡 Päeva ideed", "📈 Graafik", "🏢 Fundamentaal", "🎯 Analüütikud",
-                "🧪 Ajalooline test", "⚖️ Võrdlus", "📘 Õpetus"])
-T_OVER, T_IDEAS, T_CHART, T_FUND, T_ANAL, T_BT, T_CMP, T_HELP = tabs
+tabs = st.tabs(["📊 Ülevaade", "💡 Päeva ideed", "📈 Graafik", "🏢 Ettevõte", "⚖️ Võrdlus", "📘 Õpetus"])
+T_OVER, T_IDEAS, T_CHART, T_FUND, T_CMP, T_HELP = tabs
+T_ANAL = T_FUND  # analüütikud samal vahelehel ettevõtte numbritega
 
 # ---------------------------------------------------------------- Ülevaade
 
@@ -349,10 +378,10 @@ with T_OVER:
             up = price * np.exp(mu_t + A.Z80 * sd * np.sqrt(t))
             dn = price * np.exp(mu_t - A.Z80 * sd * np.sqrt(t))
             fig.add_trace(go.Scatter(x=d.index, y=d["Close"], name="Hind", line=dict(color=BLUE, width=2),
-                                     fill="tozeroy", fillcolor="rgba(42,120,214,0.06)",
+                                     fill="tozeroy", fillcolor="rgba(59,130,246,0.08)",
                                      hovertemplate="%{x|%d.%m.%Y}: %{y:.2f}<extra></extra>"))
             fig.add_trace(go.Scatter(x=list(fut) + list(fut[::-1]), y=list(up) + list(dn[::-1]), fill="toself",
-                                     fillcolor="rgba(98,80,214,0.12)", line=dict(width=0), name="80% vahemik", hoverinfo="skip"))
+                                     fillcolor="rgba(139,92,246,0.14)", line=dict(width=0), name="80% vahemik", hoverinfo="skip"))
             fig.add_trace(go.Scatter(x=fut, y=mid, name="Oodatav", line=dict(color=VIOLET, width=2, dash="dot"),
                                      hovertemplate="%{x|%d.%m.%Y}: %{y:.2f}<extra></extra>"))
             for label, v in res["views"].items():
@@ -381,6 +410,7 @@ with T_OVER:
                     unsafe_allow_html=True)
     st.caption("NB: tugev tõus keskmistest kaugele loetakse siin ettevaatusmärgiks (keskmisele naasmine). "
                "Miks – vt 📘 Õpetus.")
+    T_BT = st.expander("🧪 Kas mudel on selle aktsiaga varem töötanud?")
 
 # ---------------------------------------------------------------- Graafik
 
@@ -388,26 +418,30 @@ with T_CHART:
     per = st.segmented_control("Periood", ["3 kuud", "6 kuud", "1 aasta", "2 aastat", "5 aastat"], default="1 aasta",
                                label_visibility="collapsed") or "1 aasta"
     n = {"3 kuud": 63, "6 kuud": 126, "1 aasta": 252, "2 aastat": 504, "5 aastat": 1300}[per]
+    adv = st.toggle("Näita tehnilisi näitajaid (maht, RSI, MACD)", value=False)
     d = res["d"].tail(n)
-    fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.55, 0.13, 0.16, 0.16],
-                        subplot_titles=("Hind", "Maht", "RSI (14)", "MACD"))
+    rows_n = 4 if adv else 1
+    fig = make_subplots(rows=rows_n, cols=1, shared_xaxes=True, vertical_spacing=0.03,
+                        row_heights=[0.55, 0.13, 0.16, 0.16] if adv else [1],
+                        subplot_titles=("Hind", "Maht", "RSI (14)", "MACD") if adv else None)
     fig.add_trace(go.Scatter(x=d.index, y=d["BB_up"], line=dict(width=0), showlegend=False, hoverinfo="skip"), 1, 1)
-    fig.add_trace(go.Scatter(x=d.index, y=d["BB_dn"], line=dict(width=0), fill="tonexty", fillcolor="rgba(138,137,132,0.12)",
+    fig.add_trace(go.Scatter(x=d.index, y=d["BB_dn"], line=dict(width=0), fill="tonexty", fillcolor="rgba(139,92,246,0.08)",
                              name="Bollinger", hoverinfo="skip"), 1, 1)
     fig.add_trace(go.Candlestick(x=d.index, open=d["Open"], high=d["High"], low=d["Low"], close=d["Close"], name="Hind",
                                  increasing_line_color=UP, decreasing_line_color=DOWN), 1, 1)
     for col, color in (("SMA20", YELLOW), ("SMA50", ORANGE), ("SMA200", VIOLET)):
         fig.add_trace(go.Scatter(x=d.index, y=d[col], name=col, line=dict(color=color, width=1.5)), 1, 1)
-    fig.add_trace(go.Bar(x=d.index, y=d["Volume"], name="Maht", showlegend=False,
+    if adv:
+      fig.add_trace(go.Bar(x=d.index, y=d["Volume"], name="Maht", showlegend=False,
                          marker_color=np.where(d["Close"] >= d["Open"], UP, DOWN)), 2, 1)
-    fig.add_trace(go.Scatter(x=d.index, y=d["RSI"], name="RSI", line=dict(color=BLUE, width=1.5), showlegend=False), 3, 1)
-    for lvl in (30, 70):
-        fig.add_hline(y=lvl, line=dict(color=NEUTRAL, dash="dot", width=1), row=3, col=1)
-    fig.add_trace(go.Bar(x=d.index, y=d["MACD_hist"], name="MACD hist", showlegend=False,
-                         marker_color=np.where(d["MACD_hist"] >= 0, UP, DOWN)), 4, 1)
-    fig.add_trace(go.Scatter(x=d.index, y=d["MACD"], name="MACD", line=dict(color=BLUE, width=1.5), showlegend=False), 4, 1)
-    fig.add_trace(go.Scatter(x=d.index, y=d["MACD_signal"], name="Signaal", line=dict(color=ORANGE, width=1.5), showlegend=False), 4, 1)
-    fig.update_layout(height=820, xaxis_rangeslider_visible=False, hovermode="x unified",
+      fig.add_trace(go.Scatter(x=d.index, y=d["RSI"], name="RSI", line=dict(color=BLUE, width=1.5), showlegend=False), 3, 1)
+      for lvl in (30, 70):
+          fig.add_hline(y=lvl, line=dict(color=NEUTRAL, dash="dot", width=1), row=3, col=1)
+      fig.add_trace(go.Bar(x=d.index, y=d["MACD_hist"], name="MACD hist", showlegend=False,
+                           marker_color=np.where(d["MACD_hist"] >= 0, UP, DOWN)), 4, 1)
+      fig.add_trace(go.Scatter(x=d.index, y=d["MACD"], name="MACD", line=dict(color=BLUE, width=1.5), showlegend=False), 4, 1)
+      fig.add_trace(go.Scatter(x=d.index, y=d["MACD_signal"], name="Signaal", line=dict(color=ORANGE, width=1.5), showlegend=False), 4, 1)
+    fig.update_layout(height=820 if adv else 520, xaxis_rangeslider_visible=False, hovermode="x unified",
                       margin=dict(l=0, r=0, t=30, b=0), legend=dict(orientation="h", y=1.04))
     fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
     show(fig)
@@ -422,6 +456,7 @@ with T_CHART:
 # ---------------------------------------------------------------- Fundamentaal
 
 with T_FUND:
+    st.markdown("<div class='ct' style='font-size:18px'>🏢 Ettevõtte numbrid</div>", unsafe_allow_html=True)
     rows = [
         ("Turuväärtus", big(info.get("marketCap"))),
         ("P/E (viimased 12 kuud)", f"{info['trailingPE']:.1f}" if info.get("trailingPE") else "–"),
@@ -462,6 +497,8 @@ with T_FUND:
 # ---------------------------------------------------------------- Analüütikud
 
 with T_ANAL:
+    st.write("")
+    st.markdown("<div class='ct' style='font-size:18px'>🎯 Analüütikud ja uudised</div>", unsafe_allow_html=True)
     a, b = st.columns(2)
     with a:
         st.markdown("**Hinnasihid vs praegune hind**")
@@ -593,19 +630,17 @@ lahti seletatud: mida see näitab, miks seda vaja on ja kuidas seda vaadata.
     with st.expander("🧭 Kiire tööjärjekord: kuidas ühte aktsiat 10 minutiga analüüsida", expanded=True):
         st.markdown(
             """
-1. **Ülevaade → hinnangukaardid.** Vaata, mis signaal on 4, 12 ja 26 nädalal. Kas kõik
-   näitavad samas suunas? Kui jah ja kindlus on *kõrge*, on pilt selgem.
-2. **Ülevaade → „Mis hinnangut mõjutab“.** Loe läbi toetavad ja vastu räägivad
-   põhjused. See on kõige tähtsam osa: saad aru, *miks* skoor on selline.
-3. **Fundamentaal.** Kas ettevõte kasvab, teenib kasumit ja pole üle võlgu?
-   Kas hind (P/E) on kasvu suhtes mõistlik?
-4. **Analüütikud.** Kui palju on hinnasiht praegusest kõrgemal? Kas soovitusi on
-   viimastel kuudel tõstetud või langetatud?
-5. **Graafik.** Kas hind on tõusutrendis või languses? Kas RSI näitab ülekuumenemist?
-6. **Kollased hoiatused** lehe ülaosas: tulemuste avaldus lähipäevil tähendab
-   suuremat hinnakõikumist ja suuremat riski.
-7. **Ajalooline test.** Kas mudel on just *selle* aktsia puhul varem töötanud?
-   Kui korrelatsioon on negatiivne, usalda skoori vähem.
+1. **Lihtne vastus** lehe ülaosas. Loe läbi „Järgmise 3 kuu vaade“ ja selle selgitus tavakeeles.
+2. **Ülevaade → hinnangukaardid.** Mis signaal on 4, 12 ja 26 nädalal? Kas kõik näitavad
+   samas suunas? Kui jah ja kindlus on *kõrge*, on pilt selgem.
+3. **Ülevaade → „Räägib poolt / vastu“.** See on kõige tähtsam osa: saad aru, *miks* skoor on selline.
+4. **Ettevõte.** Kas ettevõte kasvab, teenib kasumit ja pole üle võlgu? Kas hind (P/E) on
+   kasvu suhtes mõistlik? Kui palju on analüütikute hinnasiht praegusest kõrgemal?
+5. **Graafik.** Kas hind on tõusutrendis või languses? Lülita sisse „tehnilised näitajad“,
+   kui tahad näha RSI-d ja MACD-d.
+6. **Kollased hoiatused:** tulemuste avaldus lähipäevil tähendab suuremat hinnakõikumist.
+7. **Ülevaate lõpus „Kas mudel on varem töötanud?“** Kui korrelatsioon on negatiivne,
+   usalda skoori selle aktsia puhul vähem.
 8. **Otsus on sinu.** Mudel on abivahend. Mõtle alati, kui palju oled valmis kaotama.
 """
         )

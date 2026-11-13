@@ -2,12 +2,19 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 :root {
-  --bg: #f5f7fb; --card: #ffffff; --line: #e5e9f2; --ink: #0f172a; --ink2: #475569; --muted: #94a3b8;
-  --blue: #2a78d6; --blue-soft: #eaf2fc;
-  --up: #0f8a4c; --up-soft: #e6f6ee; --down: #c9302f; --down-soft: #fdecec; --flat: #475569; --flat-soft: #eef1f6;
-  --warn: #92600a; --warn-soft: #fff6e0;
-  --shadow: 0 1px 2px rgba(15,23,42,.04), 0 4px 16px rgba(15,23,42,.05);
+  --bg: #ffffff; --card: #ffffff; --line: #e8edf7; --ink: #1e293b; --ink2: #556274; --muted: #98a4b8;
+  --blue: #3b82f6; --blue-soft: #e8f1ff; --violet: #8b5cf6;
+  --up: #059669; --up-soft: #dcfce9; --down: #e11d48; --down-soft: #ffe4ea; --flat: #64748b; --flat-soft: #f1f5fb;
+  --warn: #a15c07; --warn-soft: #fff7e0;
+  --shadow: 0 1px 2px rgba(59,130,246,.05), 0 8px 24px rgba(59,130,246,.07);
 }
+
+/* Hele ja rõõmus taust */
+.stApp { background:
+  radial-gradient(900px 420px at 8% -8%, #dbeafe 0%, rgba(219,234,254,0) 70%),
+  radial-gradient(800px 380px at 95% -5%, #fce7f3 0%, rgba(252,231,243,0) 70%),
+  radial-gradient(700px 360px at 55% 0%, #ede9fe 0%, rgba(237,233,254,0) 70%),
+  #ffffff; }
 
 .block-container { padding-top: 2.2rem; padding-bottom: 3rem; max-width: 1240px; }
 header[data-testid="stHeader"] { background: transparent; }
@@ -16,10 +23,16 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 
 /* Brändirida */
 .brand { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
-.brand .logo { width:34px; height:34px; border-radius:10px; display:grid; place-items:center;
-  background: linear-gradient(135deg,#2a78d6,#6250d6); color:#fff; font-weight:800; font-size:17px; }
+.brand .logo { width:36px; height:36px; border-radius:11px; display:grid; place-items:center;
+  background: linear-gradient(135deg,#3b82f6,#8b5cf6 60%,#ec4899); color:#fff; font-weight:800; font-size:18px;
+  box-shadow:0 6px 16px rgba(139,92,246,.3); }
 .brand .t { font-weight:800; font-size:20px; color:var(--ink); letter-spacing:-0.02em; }
 .brand .s { color:var(--muted); font-size:13px; margin-left:4px; }
+
+/* Otsingukast nähtavaks */
+iframe[title^="streamlit_searchbox"], [data-testid="stCustomComponentV1"] {
+  border:1.5px solid #c7d7f5 !important; border-radius:12px; box-shadow:0 4px 14px rgba(59,130,246,.10); background:#fff; }
+[data-testid="stPills"] button, .stPills button { background:#fff; }
 
 /* Kaardid */
 .card { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:18px 20px; box-shadow:var(--shadow); }
@@ -31,7 +44,8 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 /* Päis */
 .hero { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; }
 .hero-left { display:flex; align-items:center; gap:14px; min-width:0; }
-.avatar { width:52px; height:52px; border-radius:14px; background:var(--blue-soft); color:var(--blue);
+.hero-card { background: linear-gradient(120deg,#eef5ff 0%,#f5f0ff 55%,#fff1f6 100%) !important; border-color:#e4e8fb !important; }
+.avatar { width:52px; height:52px; border-radius:14px; background:linear-gradient(135deg,#3b82f6,#8b5cf6); color:#fff;
   display:grid; place-items:center; font-weight:800; font-size:17px; flex:none; }
 .hero .name { font-size:26px; font-weight:800; color:var(--ink); line-height:1.15; letter-spacing:-0.02em; }
 .hero .sub { color:var(--ink2); font-size:13.5px; margin-top:4px; display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
@@ -45,7 +59,9 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 
 /* KPI-d */
 .kpis { display:grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap:12px; margin-top:14px; }
-.kpi { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; box-shadow:var(--shadow); }
+.kpi { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px; box-shadow:var(--shadow);
+  border-top:4px solid var(--kc, #3b82f6); }
+.kpi:nth-child(1) { --kc:#3b82f6; } .kpi:nth-child(2) { --kc:#8b5cf6; } .kpi:nth-child(3) { --kc:#f59e0b; } .kpi:nth-child(4) { --kc:#10b981; }
 .kpi .k { color:var(--ink2); font-size:12.5px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
 .kpi .v { font-size:22px; font-weight:800; color:var(--ink); margin-top:4px; letter-spacing:-0.02em; }
 .kpi .d { font-size:12.5px; color:var(--ink2); margin-top:2px; }
@@ -56,8 +72,12 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 /* Hoiatused ja kokkuvõte */
 .note { display:flex; gap:10px; align-items:flex-start; background:var(--warn-soft); color:var(--warn);
   border-radius:12px; padding:10px 14px; font-size:14px; margin-top:10px; }
-.verdict { margin-top:16px; background:linear-gradient(135deg,#ffffff, #f2f7ff); border:1px solid #dbe7f8; border-radius:16px;
-  padding:16px 20px; box-shadow:var(--shadow); }
+.verdict { margin-top:16px; background:#fff; border:1px solid var(--line); border-left:6px solid var(--vc, #3b82f6);
+  border-radius:16px; padding:18px 22px; box-shadow:var(--shadow); }
+.verdict .head { font-size:20px; font-weight:800; color:var(--ink); letter-spacing:-0.01em; margin-bottom:6px; }
+.verdict .head span { color:var(--vc); }
+.verdict .plain { font-size:15.5px; color:var(--ink); line-height:1.6; }
+.verdict .row { margin-top:12px; }
 .verdict .row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .verdict .lbl { font-weight:700; color:var(--ink); margin-right:4px; }
 .verdict .why { color:var(--ink2); font-size:14px; margin-top:10px; line-height:1.55; }
@@ -72,7 +92,8 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 .sig .conf { font-size:12px; color:var(--ink2); background:var(--flat-soft); border-radius:999px; padding:2px 9px; }
 .sig .label { font-size:24px; font-weight:800; margin:10px 0 12px; letter-spacing:-0.02em; color:var(--accent); }
 .meter { position:relative; height:8px; border-radius:99px;
-  background:linear-gradient(90deg,#f3b8b7 0%,#e9edf3 40%,#e9edf3 60%,#a8e0c2 100%); }
+  background:linear-gradient(90deg,#fda4af 0%,#eef2f8 40%,#eef2f8 60%,#6ee7b7 100%); }
+.sig { background:linear-gradient(180deg, var(--tint, #fff) 0%, #ffffff 90px) !important; }
 .meter .dot { position:absolute; top:-5px; width:18px; height:18px; border-radius:50%; background:#fff;
   border:4px solid var(--accent); transform:translateX(-50%); box-shadow:0 1px 4px rgba(0,0,0,.15); }
 .meter-l { display:flex; justify-content:space-between; font-size:11.5px; color:var(--muted); margin-top:6px; }
@@ -110,7 +131,8 @@ h1, h2, h3 { letter-spacing: -0.02em; }
 .stTabs [data-baseweb="tab-list"] { gap:6px; border-bottom:0; flex-wrap:wrap; margin-top:10px; }
 .stTabs [data-baseweb="tab"] { height:38px; padding:0 14px; border-radius:999px; background:#fff; border:1px solid var(--line);
   color:var(--ink2); font-weight:600; }
-.stTabs [aria-selected="true"] { background:var(--ink) !important; color:#fff !important; border-color:var(--ink); }
+.stTabs [aria-selected="true"] { background:linear-gradient(135deg,#3b82f6,#8b5cf6) !important; color:#fff !important;
+  border-color:transparent; box-shadow:0 4px 12px rgba(99,102,241,.3); }
 .stTabs [aria-selected="true"] p { color:#fff !important; }
 .stTabs [data-baseweb="tab-highlight"], .stTabs [data-baseweb="tab-border"] { display:none; }
 .stTabs [data-baseweb="tab-panel"] { padding-top:16px; }
