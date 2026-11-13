@@ -170,3 +170,17 @@ small.up { color:var(--up); } small.down { color:var(--down); } small.flat { col
 [class*="st-key-mr_"] [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child { flex: 1 1 auto !important; min-width: 0 !important; width: auto !important; }
 [class*="st-key-mr_"] [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child { flex: 0 0 76px !important; min-width: 76px !important; width: 76px !important; }
 [class*="st-key-mr_"] .stButton button { white-space: nowrap; padding: 4px 8px; }
+
+/* Nimekirja muutmise paneel */
+.edt { font-weight:600; color:var(--ink); font-size:15px; }
+[class*="st-key-ed_"] [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; gap: 8px !important; }
+[class*="st-key-ed_"] [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child { flex: 1 1 auto !important; min-width: 0 !important; }
+[class*="st-key-ed_"] [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child { flex: 0 0 44px !important; min-width: 44px !important; width: 44px !important; }
+[class*="st-key-ed_"] .stButton button { padding: 2px 0; min-height: 36px; font-size: 20px; font-weight: 600;
+  width: 40px !important; min-width: 40px !important; border-radius: 50%; line-height: 1; }
+[class*="st-key-rm_"] button { background: var(--down-soft) !important; border-color: #ead0c5 !important; }
+[class*="st-key-add_typed"] button { background: var(--up-soft) !important; border-color: #cfe0cb !important; }
+[class*="st-key-rm_"] button { color: var(--down) !important; }
+[class*="st-key-add_typed"] button { color: var(--up) !important; }
+[class*="st-key-rm_"] button p { color: var(--down) !important; font-size: 20px; font-weight: 700; }
+[class*="st-key-add_typed"] button p { color: var(--up) !important; font-size: 20px; font-weight: 700; }

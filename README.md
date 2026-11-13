@@ -18,7 +18,7 @@ brauseris aadressil http://localhost:8501. Peatamiseks sulge Terminali aken.
 
 ## Lehe ülesehitus
 
-- Üleval: **jälgimisnimekiri** (salvestub lingi sisse – lisa leht järjehoidjatesse) ja **tänased ideed**.
+- Üleval: **jälgimisnimekiri** (muuda nupuga „Muuda nimekirja“: − eemaldab, ＋ lisab nime või tickeri järgi; salvestub lingi sisse – lisa leht järjehoidjatesse) ja **tänased ideed**.
 - All: valitud aktsia analüüs ühel lehel; lisainfo (graafik, ettevõtte numbrid, analüütikud, ajalooline test, võrdlus, juhend) avaneb klikiga.
 - Lingiga saab jagada ka konkreetset aktsiat: `?t=NVDA`.
 

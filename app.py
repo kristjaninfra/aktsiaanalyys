@@ -234,23 +234,35 @@ def _quick_pick():
     if v:
         st.session_state.ticker = v
     st.session_state.quick = None
+    st.session_state.editing = False
 
 
 def _open(tk):
     st.session_state.ticker = tk
+    st.session_state.editing = False
 
 
-def _toggle_watch(tk):
-    w = st.session_state.watch
-    if tk in w:
-        w.remove(tk)
-    else:
-        w.append(tk)
+def _watch_add(tk):
+    st.session_state.editing = True
+    tk = (tk or "").strip().upper()
+    if tk and tk not in st.session_state.watch and len(st.session_state.watch) < 15:
+        st.session_state.watch.append(tk)
 
 
-def _set_watch():
-    raw = st.session_state.get("watch_edit", "")
-    st.session_state.watch = [x.strip().upper() for x in raw.replace(";", ",").split(",") if x.strip()][:15]
+def _watch_remove(tk):
+    st.session_state.editing = True
+    if tk in st.session_state.watch:
+        st.session_state.watch.remove(tk)
+
+
+def _watch_add_typed():
+    """Lisa lahtrisse kirjutatud nimi või ticker (nt "coca cola" -> KO)."""
+    q = st.session_state.get("watch_new", "").strip()
+    if not q:
+        return
+    hits = search_cached(q)
+    _watch_add(hits[0][1] if hits else q)
+    st.session_state.watch_new = ""
 
 
 st.markdown("""<div class="brand"><div class="t">Aktsiaanalüüs</div>
@@ -333,9 +345,6 @@ st.markdown(f"""
    <div class="d">{f"tulemused {ed:%d.%m.%Y} ({ed_days} p pärast)" if ed_days is not None and ed_days >= 0 else "&nbsp;"}</div></div>
 </div>
 """, unsafe_allow_html=True)
-
-in_w = ticker in st.session_state.watch
-st.button("★ Jälgimisnimekirjas (eemalda)" if in_w else "☆ Lisa jälgimisnimekirja", on_click=_toggle_watch, args=(ticker,))
 
 for w in res["warnings"]:
     st.markdown(f"<div class='note'><div>{esc(w)}</div></div>", unsafe_allow_html=True)
@@ -921,8 +930,20 @@ with watch_box:
                 continue
             ph = f"{money(it['price'], it['cur'])} <small class='{tone(it['chg'])}'>{pct(it['chg'])}</small>"
             mini_row(it["ticker"], it["name"], "", ph, sig_pill(it["v12"]["signal"]), f"w_{it['ticker']}")
-    with st.popover("Muuda nimekirja", use_container_width=False):
-        st.text_input("Tickerid komaga eraldatult (kuni 15)", value=", ".join(wl), key="watch_edit", on_change=_set_watch)
+    with st.expander("Muuda nimekirja", expanded=st.session_state.get("editing", False)):
+        for tk in list(wl):
+            a, b = st.container(key=f"ed_{tk}").columns([4, 1], vertical_alignment="center")
+            a.markdown(f"<div class='edt'>{esc(tk)}</div>", unsafe_allow_html=True)
+            b.button("−", key=f"rm_{tk}", on_click=_watch_remove, args=(tk,), help=f"Eemalda {tk}")
+        if not wl:
+            st.caption("Nimekiri on tühi.")
+        a, b = st.container(key="ed_add").columns([4, 1], vertical_alignment="bottom")
+        a.text_input("Lisa aktsia", key="watch_new", placeholder="nimi või ticker, nt coca cola",
+                     on_change=_watch_add_typed)
+        b.button("＋", key="add_typed", on_click=_watch_add_typed, help="Lisa")
+        if ticker not in wl:
+            st.button(f"+ Lisa praegune aktsia ({ticker})", key="add_current", on_click=_watch_add, args=(ticker,),
+                      use_container_width=True)
         st.caption("Nimekiri jääb lingi sisse. Lisa leht järjehoidjatesse, siis on see järgmisel korral alles.")
 
 with ideas_box:
