@@ -85,12 +85,13 @@ def badge(signal):
 
 # ---------------------------------------------------------------- külgriba
 
-with st.sidebar:
-    st.header("📈 Aktsiaanalüüs")
+# Otsing on lehe ülaosas (mitte külgribal), et see oleks ka telefonis kohe näha.
+search_col, _ = st.columns([2, 1])
+with search_col:
     if st_searchbox is not None:
         picked = st_searchbox(
             search_cached,
-            label="Otsi aktsiat",
+            label="🔎 Otsi aktsiat",
             placeholder="Kirjuta nimi või ticker, nt apple, nvidia…",
             key="aktsia_otsing",
             default="AAPL",
@@ -98,9 +99,11 @@ with st.sidebar:
             debounce=300,
         )
         ticker = (picked or "AAPL").strip().upper()
-        st.caption(f"Valitud: **{ticker}**")
     else:
-        ticker = st.text_input("Aktsia ticker", value="AAPL").strip().upper()
+        ticker = st.text_input("🔎 Aktsia ticker", value="AAPL").strip().upper()
+
+with st.sidebar:
+    st.header("📈 Aktsiaanalüüs")
     with st.expander("Kuidas hinnang tekib?"):
         st.markdown(
             """
