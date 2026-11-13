@@ -348,7 +348,8 @@ def analyze(data: dict, bench: pd.Series | None) -> dict:
     for name, s in ts_now.items():
         factors.append(("tech_short", name, float(s), texts.get(name, name)))
     for name, s in tl_now.items():
-        factors.append(("tech_long", name, float(s), texts.get(name, name)))
+        hint = " → alla venitatud, tõusuruum" if s > 0.05 else " → üles venitatud, jahtumisrisk" if s < -0.05 else ""
+        factors.append(("tech_long", name, float(s), texts.get(name, name) + hint))
     for name, s, txt in fund:
         factors.append(("fund", name, s, txt))
     for name, s, txt in anal:
@@ -358,7 +359,7 @@ def analyze(data: dict, bench: pd.Series | None) -> dict:
     ed = data.get("earnings_date")
     if ed is not None:
         days_to = (ed - pd.Timestamp.today().normalize()).days
-        if 0 <= days_to <= 90:
+        if 0 <= days_to <= 14:
             warnings_.append(f"Järgmine tulemuste avaldus {ed:%d.%m.%Y} ({days_to} päeva pärast) – hind võib siis järsult liikuda.")
     if sigma_d * math.sqrt(252) > 0.5:
         warnings_.append(f"Väga volatiilne aktsia (aastane volatiilsus {sigma_d * math.sqrt(252) * 100:.0f}%). Hinnavahemikud on laiad.")

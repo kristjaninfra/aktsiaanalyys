@@ -1,11 +1,16 @@
 """Aktsiaanalüüs – Streamliti rakendus. Käivita: ./start.command"""
 from __future__ import annotations
 
+import datetime as dt
+import html
 import math
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.io as pio
 import streamlit as st
 from plotly.subplots import make_subplots
 
@@ -16,7 +21,37 @@ try:
 except ImportError:  # varulahendus: tavaline tekstikast
     st_searchbox = None
 
-st.set_page_config(page_title="Aktsiaanalüüs", page_icon="📈", layout="wide")
+st.set_page_config(page_title="Aktsiaanalüüs", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
+st.markdown(f"<style>{(Path(__file__).parent / 'style.css').read_text()}</style>", unsafe_allow_html=True)
+
+# Värvid (valideeritud kategooriline palett) + staatusvärvid
+BLUE, ORANGE, AQUA, VIOLET, YELLOW = "#2a78d6", "#eb6834", "#1baf7a", "#6250d6", "#eda100"
+UP, DOWN, NEUTRAL = "#1baf7a", "#e34948", "#94a3b8"
+SIG_TONE = {"OST": "up", "KERGE OST": "up", "HOIA": "flat", "KERGE MÜÜK": "down", "MÜÜ": "down"}
+TONE_COLOR = {"up": "#0f8a4c", "down": "#c9302f", "flat": "#475569"}
+SIGNAL_ICON = {"OST": "▲▲", "KERGE OST": "▲", "HOIA": "■", "KERGE MÜÜK": "▼", "MÜÜ": "▼▼"}
+
+# Ühtne graafikute stiil
+pio.templates["moodne"] = go.layout.Template(layout=dict(
+    font=dict(family="Inter, -apple-system, Segoe UI, sans-serif", size=12, color="#475569"),
+    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+    xaxis=dict(showgrid=False, linecolor="#e5e9f2", zeroline=False, ticks=""),
+    yaxis=dict(gridcolor="#eef2f7", zeroline=False, ticks="", linecolor="rgba(0,0,0,0)"),
+    hoverlabel=dict(bgcolor="white", bordercolor="#e5e9f2", font=dict(color="#0f172a", family="Inter, sans-serif")),
+    legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=12)),
+    colorway=[BLUE, ORANGE, AQUA, YELLOW, VIOLET],
+))
+pio.templates.default = "plotly_white+moodne"
+
+
+def show(fig):
+    st.plotly_chart(fig, use_container_width=True, theme=None, config={"displayModeBar": False})
+
+
+# Päeva ideede skaneeritav valim: USA suurettevõtted eri sektoritest
+UNIVERSE = ("AAPL MSFT NVDA GOOGL AMZN META TSLA AVGO ORCL ADBE CRM AMD INTC QCOM CSCO NFLX "
+            "JPM BAC GS V MA UNH LLY JNJ PFE MRK ABBV XOM CVX PG KO PEP COST WMT HD MCD NKE DIS BA CAT T VZ").split()
+QUICK = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "TSLA", "META", "LHV1T.TL"]
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -26,12 +61,6 @@ def _search(q: str):
 
 def search_cached(q: str):
     return _search(q.strip().lower()) if q and q.strip() else []
-
-# Värvid (valideeritud kategooriline palett) + staatusvärvid
-BLUE, ORANGE, AQUA, VIOLET, YELLOW = "#2a78d6", "#eb6834", "#1baf7a", "#6250d6", "#eda100"
-UP, DOWN, NEUTRAL = "#1baf7a", "#e34948", "#8a8984"
-SIGNAL_COLOR = {"OST": UP, "KERGE OST": UP, "HOIA": NEUTRAL, "KERGE MÜÜK": DOWN, "MÜÜ": DOWN}
-SIGNAL_ICON = {"OST": "▲▲", "KERGE OST": "▲", "HOIA": "■", "KERGE MÜÜK": "▼", "MÜÜ": "▼▼"}
 
 
 @st.cache_data(ttl=900, show_spinner=False)
@@ -53,12 +82,56 @@ def run(ticker: str):
     return data, res
 
 
+@st.cache_data(ttl=24 * 3600, show_spinner=False)
+def daily_ideas(day: str, n: int = 3):
+    """Skaneerib valimi ja tagastab parimad. `day` teeb vahemälu päevapõhiseks."""
+    bench = get_bench()
+
+    def one(tk):
+        try:
+            data = A.fetch(tk)
+            res = A.analyze(data, bench)
+            v12, v26 = res["views"]["12 nädalat"], res["views"]["26 nädalat"]
+            info = data["info"]
+            facs = sorted(res["factors"], key=lambda f: f[2], reverse=True)
+            soon = data["earnings_date"] is not None and 0 <= (data["earnings_date"] - pd.Timestamp.today().normalize()).days <= 7
+            return {
+                "ticker": tk, "name": info.get("shortName") or tk, "sector": info.get("sector") or "",
+                "price": res["price"], "score": (v12["score"] + v26["score"]) / 2,
+                "v12": v12, "v26": v26, "groups": res["groups"],
+                "pros": [f[3] for f in facs if f[2] > 0.05][:3],
+                "con": next((f[3] for f in facs[::-1] if f[2] < -0.05), None),
+                "upside": (info["targetMeanPrice"] / res["price"] - 1) if info.get("targetMeanPrice") else None,
+                "earnings_soon": soon,
+            }
+        except Exception:
+            return None
+
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        rows = [r for r in ex.map(one, UNIVERSE) if r]
+    rows.sort(key=lambda r: r["score"], reverse=True)
+    # Hajutus: maksimaalselt üks idee sektori kohta
+    picks, seen = [], set()
+    for r in rows:
+        if r["sector"] in seen:
+            continue
+        picks.append(r)
+        seen.add(r["sector"])
+        if len(picks) == n:
+            break
+    return picks, len(rows)
+
+
 # ---------------------------------------------------------------- vormindus
+
+def esc(x):
+    return html.escape(str(x))
+
 
 def money(x, cur="USD"):
     if x is None or (isinstance(x, float) and math.isnan(x)):
         return "–"
-    sym = "$" if cur == "USD" else ""
+    sym = "$" if cur == "USD" else ("€" if cur == "EUR" else "")
     return f"{sym}{x:,.2f}".replace(",", " ")
 
 
@@ -77,54 +150,93 @@ def pct(x, sign=True):
     return f"{x * 100:+.1f}%" if sign else f"{x * 100:.1f}%"
 
 
-def badge(signal):
-    c = SIGNAL_COLOR[signal]
-    return (f"<span style='background:{c};color:#fff;padding:3px 10px;border-radius:6px;"
-            f"font-weight:700;font-size:0.95rem'>{SIGNAL_ICON[signal]} {signal}</span>")
+def tone(x):
+    return "up" if x > 0.0005 else "down" if x < -0.0005 else "flat"
 
 
-# ---------------------------------------------------------------- külgriba
+def sig_pill(signal):
+    return f"<span class='pill {SIG_TONE[signal]}'>{SIGNAL_ICON[signal]} {signal}</span>"
 
-# Otsing on lehe ülaosas (mitte külgribal), et see oleks ka telefonis kohe näha.
-search_col, _ = st.columns([2, 1])
+
+def sig_card(label, v, price, cur):
+    t = SIG_TONE[v["signal"]]
+    accent = TONE_COLOR[t]
+    s = v["score"] * 100
+    dot = max(2, min(98, 50 + s / 2))
+    span = v["high"] - v["low"]
+    now = max(0, min(100, (price - v["low"]) / span * 100)) if span else 50
+    mid = max(0, min(100, (v["mid"] - v["low"]) / span * 100)) if span else 50
+    er = v["exp_ret"]
+    return f"""
+<div class="card sig" style="--accent:{accent}">
+  <div class="top"><span class="h">{esc(label)}</span><span class="conf">kindlus: {esc(v['confidence'])}</span></div>
+  <div class="label">{SIGNAL_ICON[v['signal']]} {v['signal']}</div>
+  <div class="meter"><div class="dot" style="left:{dot:.1f}%"></div></div>
+  <div class="meter-l"><span>Müü −100</span><b>skoor {s:+.0f}</b><span>+100 Ost</span></div>
+  <div class="stats">
+    <div class="stat"><div class="k">Tõusu tõenäosus</div><div class="v">{v['p_up'] * 100:.0f}%</div></div>
+    <div class="stat"><div class="k">Oodatav hind</div><div class="v">{money(v['mid'], cur)}<small style="color:{TONE_COLOR[tone(er)]}">{pct(er)}</small></div></div>
+  </div>
+  <div class="rng"><div class="k">80% tõenäosusega vahemik · ▏praegu ● oodatav</div>
+    <div class="rbar"><div class="mid" style="left:{mid:.1f}%"></div><div class="now" style="left:{now:.1f}%"></div></div>
+    <div class="rl"><span>{money(v['low'], cur)}</span><span>{money(v['high'], cur)}</span></div>
+  </div>
+</div>"""
+
+
+def factor_rows(items, positive):
+    color = "#1baf7a" if positive else "#e34948"
+    out = []
+    for grp, _nm, s, txt in items:
+        w = min(100, abs(s) * 100)
+        out.append(f"""<div class="frow"><div><div class="ft">{esc(txt)}</div><div class="fg">{esc(A.GROUP_NAMES[grp])}</div></div>
+<div class="fb"><div style="width:{w:.0f}%;background:{color}"></div></div>
+<div class="fs" style="color:{TONE_COLOR['up' if positive else 'down']}">{s * 100:+.0f}</div></div>""")
+    return "".join(out) or "<div class='fg'>Puuduvad</div>"
+
+
+# ---------------------------------------------------------------- otsing ja kiirvalikud
+
+if "ticker" not in st.session_state:
+    st.session_state.ticker = "AAPL"
+
+
+def _quick_pick():
+    v = st.session_state.get("quick")
+    if v:
+        st.session_state.ticker = v
+    st.session_state.quick = None
+
+
+def _open(tk):
+    st.session_state.ticker = tk
+
+
+st.markdown("""<div class="brand"><div class="logo">↗</div><div class="t">Aktsiaanalüüs</div>
+<div class="s">hinnang 4–26 nädalaks</div></div>""", unsafe_allow_html=True)
+
+search_col, quick_col = st.columns([1.1, 1.4], vertical_alignment="bottom")
 with search_col:
     if st_searchbox is not None:
         picked = st_searchbox(
             search_cached,
-            label="🔎 Otsi aktsiat",
-            placeholder="Kirjuta nimi või ticker, nt apple, nvidia…",
+            label="Otsi aktsiat",
+            placeholder="🔎  Kirjuta nimi või ticker – nt apple, nvidia, lhv",
             key="aktsia_otsing",
-            default="AAPL",
-            default_options=[("AAPL – Apple Inc. (NASDAQ)", "AAPL")],
             debounce=300,
         )
-        ticker = (picked or "AAPL").strip().upper()
+        if picked and picked != st.session_state.get("last_search"):
+            st.session_state.last_search = picked
+            st.session_state.ticker = picked
     else:
-        ticker = st.text_input("🔎 Aktsia ticker", value="AAPL").strip().upper()
+        typed = st.text_input("Otsi aktsiat", placeholder="Ticker, nt AAPL")
+        if typed and typed.strip().upper() != st.session_state.get("last_search"):
+            st.session_state.last_search = typed.strip().upper()
+            st.session_state.ticker = typed.strip().upper()
+with quick_col:
+    st.pills("Kiirvalik", QUICK, key="quick", on_change=_quick_pick, label_visibility="collapsed")
 
-with st.sidebar:
-    st.header("📈 Aktsiaanalüüs")
-    with st.expander("Kuidas hinnang tekib?"):
-        st.markdown(
-            """
-**4 gruppi, igaüks −100 … +100:**
-- **Tehniline (lühiajaline):** RSI, MACD, Bollinger, hind vs 20p keskmine, 1 kuu liikumine
-- **Tehniline (ülevenitatus):** kui kaugel on hind 200p keskmisest, 3/6 kuu tõus, tugevus vs S&P500.
-  *Kaugele tõusnud = ettevaatust, kaugele langenud = tõusuruum* (ajaloos nii töötanud)
-- **Fundamentaalne:** P/E, PEG, kasv, marginaal, ROE, võlg, vaba rahavoog
-- **Analüütikud:** keskmine hinnasiht ja konsensussoovitus
-
-**Kaalud horisondi järgi:** 4 nädalat → rohkem tehniline; 26 nädalat → peamiselt
-fundamentaal ja analüütikud.
-
-**Hinnavahemik:** aktsia enda volatiilsusest (80% tõenäosusega jääb hind
-vahemikku), keskpunkti nihutab skoor.
-"""
-        )
-    st.caption("⚠️ Informatiivne tööriist, mitte investeerimisnõuanne. Otsused ja risk on sinu.")
-
-if not ticker:
-    st.stop()
+ticker = st.session_state.ticker.strip().upper()
 
 try:
     with st.spinner(f"Laen {ticker} andmeid…"):
@@ -137,117 +249,145 @@ info = data["info"]
 cur = info.get("currency", "USD")
 price = res["price"]
 chg = price / res["prev"] - 1
+tgt = info.get("targetMeanPrice")
 
 # ---------------------------------------------------------------- päis
 
 name = info.get("longName") or info.get("shortName") or ticker
-st.title(f"{name} ({ticker})")
-meta = " · ".join(x for x in [info.get("sector"), info.get("industry"), f"turuväärtus {big(info.get('marketCap'))}" if info.get("marketCap") else None] if x)
-if meta:
-    st.caption(meta)
-
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Hind", money(price, cur), pct(chg))
+sub = " · ".join(esc(x) for x in [info.get("exchange") and (info.get("fullExchangeName") or info.get("exchange")),
+                                  info.get("sector"), info.get("industry")] if x)
+initials = "".join(w[0] for w in name.replace(",", "").split()[:2]).upper() or ticker[:2]
 hi, lo = res["d"]["high_52w"].iloc[-1], res["d"]["low_52w"].iloc[-1]
-c2.metric("52 näd vahemik", f"{lo:.0f}–{hi:.0f}", f"{pct(price / hi - 1)} tipust", delta_color="off")
-c3.metric("Volatiilsus (aastane)", pct(res["sigma_d"] * math.sqrt(252), sign=False))
-tgt = info.get("targetMeanPrice")
-c4.metric("Analüütikute siht (12 kuud)", money(tgt, cur), pct(tgt / price - 1) if tgt else None)
+pos52 = (price - lo) / (hi - lo) * 100 if hi > lo else 50
+vol = res["sigma_d"] * math.sqrt(252)
+vol_txt = "rahulik" if vol < 0.2 else "tavaline" if vol < 0.35 else "kõikuv" if vol < 0.55 else "väga kõikuv"
+ed = data.get("earnings_date")
+ed_days = (ed - pd.Timestamp.today().normalize()).days if ed is not None else None
+
+st.markdown(f"""
+<div class="card" style="margin-top:14px">
+ <div class="hero">
+  <div class="hero-left"><div class="avatar">{esc(initials)}</div>
+   <div><div class="name">{esc(name)}</div>
+   <div class="sub"><span class="chip">{esc(ticker)}</span>{sub}</div></div></div>
+  <div class="hero-right"><div class="price">{money(price, cur)}</div>
+   <span class="pill {tone(chg)}">{'▲' if chg >= 0 else '▼'} {pct(chg)} viimane päev</span></div>
+ </div>
+</div>
+<div class="kpis">
+ <div class="kpi"><div class="k">52 nädala vahemik</div><div class="v">{lo:,.0f} – {hi:,.0f}</div>
+   <div class="mini"><div class="fill" style="width:{pos52:.0f}%"></div><div class="mk" style="left:{pos52:.0f}%"></div></div>
+   <div class="d" style="margin-top:8px">{pct(price / hi - 1)} tipust</div></div>
+ <div class="kpi"><div class="k">Analüütikute siht</div><div class="v">{money(tgt, cur)}</div>
+   <div class="d">{f"<span class='pill {tone(tgt / price - 1)}'>{pct(tgt / price - 1)}</span> 12 kuu peale" if tgt else "andmed puuduvad"}</div></div>
+ <div class="kpi"><div class="k">Volatiilsus</div><div class="v">{vol * 100:.0f}%</div><div class="d">aastas · {vol_txt}</div></div>
+ <div class="kpi"><div class="k">Turuväärtus</div><div class="v">{big(info.get('marketCap'))}</div>
+   <div class="d">{f"tulemused {ed:%d.%m.%Y} ({ed_days} p pärast)" if ed_days is not None and ed_days >= 0 else "&nbsp;"}</div></div>
+</div>
+""", unsafe_allow_html=True)
 
 for w in res["warnings"]:
-    st.warning(w)
+    st.markdown(f"<div class='note'>⚠️ <div>{esc(w)}</div></div>", unsafe_allow_html=True)
 
-tabs = st.tabs(["Ülevaade", "Graafik", "Fundamentaal", "Analüütikud ja uudised", "Ajalooline test", "Võrdlus", "📘 Õpetus"])
+# Kokkuvõte ühe pilguga
+facs = sorted(res["factors"], key=lambda f: f[2], reverse=True)
+pos = [f for f in facs if f[2] > 0.05][:7]
+neg = [f for f in facs[::-1] if f[2] < -0.05][:7]
+pills = "".join(f"<span style='color:var(--ink2);font-size:13px;margin-left:6px'>{esc(l)}</span>{sig_pill(v['signal'])}"
+                for l, v in res["views"].items())
+why = []
+if pos:
+    why.append(f"Suurim pluss: <b>{esc(pos[0][3])}</b>")
+if neg:
+    why.append(f"suurim miinus: <b>{esc(neg[0][3])}</b>")
+st.markdown(f"""<div class="verdict"><div class="row"><span class="lbl">Kokkuvõte</span>{pills}</div>
+<div class="why">{'; '.join(why)}.</div></div>""", unsafe_allow_html=True)
+
+tabs = st.tabs(["📊 Ülevaade", "💡 Päeva ideed", "📈 Graafik", "🏢 Fundamentaal", "🎯 Analüütikud",
+                "🧪 Ajalooline test", "⚖️ Võrdlus", "📘 Õpetus"])
+T_OVER, T_IDEAS, T_CHART, T_FUND, T_ANAL, T_BT, T_CMP, T_HELP = tabs
 
 # ---------------------------------------------------------------- Ülevaade
 
-with tabs[0]:
-    st.subheader("Hinnang 4–26 nädalaks")
-    cols = st.columns(3)
-    for col, (label, v) in zip(cols, res["views"].items()):
-        with col, st.container(border=True):
-            st.markdown(f"**{label}**")
-            st.markdown(badge(v["signal"]), unsafe_allow_html=True)
-            st.markdown("  \n".join([
-                f"Skoor **{v['score'] * 100:+.0f}** · kindlus **{v['confidence']}**",
-                f"Tõusu tõenäosus **{v['p_up'] * 100:.0f}%**",
-                f"Oodatav hind **{money(v['mid'], cur)}** ({pct(v['exp_ret'])})",
-                f"80% vahemik **{v['low']:.2f} – {v['high']:.2f}**",
-            ]))
-    st.caption("Skoor −100 … +100. Kindlus näitab, kas grupid on omavahel ühel meelel. "
-               "Lühem vaade on ebakindlam. Seletus vahelehel 📘 Õpetus.")
+with T_OVER:
+    st.markdown("<div class='sigs'>" + "".join(sig_card(l, v, price, cur) for l, v in res["views"].items()) + "</div>",
+                unsafe_allow_html=True)
+    st.write("")
 
-    left, right = st.columns([1, 1.3])
+    left, right = st.columns([1, 1.5], gap="medium")
     with left:
-        st.markdown("**Grupiskoorid**")
-        g = {A.GROUP_NAMES[k]: v * 100 for k, v in res["groups"].items() if v is not None}
-        fig = go.Figure(go.Bar(
-            x=list(g.values()), y=list(g.keys()), orientation="h",
-            marker_color=[BLUE if x >= 0 else ORANGE for x in g.values()],
-            text=[f"{x:+.0f}" for x in g.values()], textposition="outside",
-            hovertemplate="%{y}: %{x:+.0f}<extra></extra>",
-        ))
-        fig.update_layout(height=260, margin=dict(l=0, r=30, t=10, b=10), xaxis=dict(range=[-110, 110], zeroline=True))
-        st.plotly_chart(fig, use_container_width=True)
+        rows = []
+        for k, v in res["groups"].items():
+            if v is None:
+                continue
+            s = v * 100
+            w = abs(s) / 2
+            l = 50 if s >= 0 else 50 - w
+            col = BLUE if s >= 0 else ORANGE
+            rows.append(f"""<div class="grp"><div>{esc(A.GROUP_NAMES[k])}</div>
+<div class="gtrack"><div class="gbar" style="left:{l:.1f}%;width:{w:.1f}%;background:{col}"></div></div>
+<div class="gval">{s:+.0f}</div></div>""")
+        st.markdown(f"""<div class="card" style="height:100%"><div class="ct">Grupiskoorid<span class="hint">−100 … +100</span></div>
+{''.join(rows)}
+<div class="fg" style="margin-top:12px">Lühike vaade kaalub rohkem tehnilist osa, pikk vaade fundamentaali ja analüütikuid.</div></div>""",
+                    unsafe_allow_html=True)
 
     with right:
-        st.markdown("**Hinnaprognoos (80% vahemik)**")
-        d = res["d"].tail(252)
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=d.index, y=d["Close"], name="Hind", line=dict(color=BLUE, width=2),
-                                 hovertemplate="%{x|%d.%m.%Y}: %{y:.2f}<extra></extra>"))
-        last_date = d.index[-1]
-        L = A.LONGEST
-        fut = pd.bdate_range(last_date, periods=L + 1)
-        sd = res["sigma_d"]
-        t = np.arange(L + 1)
-        kx = [0] + [v["days"] for v in res["views"].values()]
-        ky = [0.0] + [math.log(v["mid"] / price) for v in res["views"].values()]
-        mu_t = np.interp(t, kx, ky)  # oodatav tee läbib iga horisondi punkti
-        mid = price * np.exp(mu_t)
-        up = price * np.exp(mu_t + A.Z80 * sd * np.sqrt(t))
-        dn = price * np.exp(mu_t - A.Z80 * sd * np.sqrt(t))
-        fig.add_trace(go.Scatter(x=list(fut) + list(fut[::-1]), y=list(up) + list(dn[::-1]), fill="toself",
-                                 fillcolor="rgba(42,120,214,0.15)", line=dict(width=0), name="80% vahemik", hoverinfo="skip"))
-        fig.add_trace(go.Scatter(x=fut, y=mid, name="Oodatav", line=dict(color=BLUE, width=2, dash="dot"),
-                                 hovertemplate="%{x|%d.%m.%Y}: %{y:.2f}<extra></extra>"))
-        for label, v in res["views"].items():
-            x = fut[min(v["days"], L)]
-            fig.add_trace(go.Scatter(x=[x], y=[v["mid"]], mode="markers+text", marker=dict(size=9, color=BLUE),
-                                     text=[f"{v['days'] // 5} näd"], textposition="top center", showlegend=False,
-                                     hovertemplate=f"{label}: %{{y:.2f}} ({v['low']:.2f}–{v['high']:.2f})<extra></extra>"))
-        if tgt:
-            fig.add_hline(y=tgt, line=dict(color=VIOLET, dash="dash", width=1.5),
-                          annotation_text=f"Analüütikute siht {tgt:.0f}", annotation_position="top left")
-        fig.update_layout(height=320, margin=dict(l=0, r=0, t=10, b=10), hovermode="x unified",
-                          legend=dict(orientation="h", y=-0.15))
-        st.plotly_chart(fig, use_container_width=True)
+        with st.container(border=True):
+            st.markdown("<div class='ct'>Hinnaprognoos<span class='hint'>viimane aasta + 26 nädalat ette</span></div>",
+                        unsafe_allow_html=True)
+            d = res["d"].tail(252)
+            fig = go.Figure()
+            last_date = d.index[-1]
+            L = A.LONGEST
+            fut = pd.bdate_range(last_date, periods=L + 1)
+            sd = res["sigma_d"]
+            t = np.arange(L + 1)
+            kx = [0] + [v["days"] for v in res["views"].values()]
+            ky = [0.0] + [math.log(v["mid"] / price) for v in res["views"].values()]
+            mu_t = np.interp(t, kx, ky)  # oodatav tee läbib iga horisondi punkti
+            mid = price * np.exp(mu_t)
+            up = price * np.exp(mu_t + A.Z80 * sd * np.sqrt(t))
+            dn = price * np.exp(mu_t - A.Z80 * sd * np.sqrt(t))
+            fig.add_trace(go.Scatter(x=d.index, y=d["Close"], name="Hind", line=dict(color=BLUE, width=2),
+                                     fill="tozeroy", fillcolor="rgba(42,120,214,0.06)",
+                                     hovertemplate="%{x|%d.%m.%Y}: %{y:.2f}<extra></extra>"))
+            fig.add_trace(go.Scatter(x=list(fut) + list(fut[::-1]), y=list(up) + list(dn[::-1]), fill="toself",
+                                     fillcolor="rgba(98,80,214,0.12)", line=dict(width=0), name="80% vahemik", hoverinfo="skip"))
+            fig.add_trace(go.Scatter(x=fut, y=mid, name="Oodatav", line=dict(color=VIOLET, width=2, dash="dot"),
+                                     hovertemplate="%{x|%d.%m.%Y}: %{y:.2f}<extra></extra>"))
+            for label, v in res["views"].items():
+                x = fut[min(v["days"], L)]
+                fig.add_trace(go.Scatter(x=[x], y=[v["mid"]], mode="markers+text",
+                                         marker=dict(size=10, color=VIOLET, line=dict(color="white", width=2)),
+                                         text=[f"{v['days'] // 5} näd"], textposition="top center", showlegend=False,
+                                         hovertemplate=f"{label}: %{{y:.2f}} ({v['low']:.2f}–{v['high']:.2f})<extra></extra>"))
+            if tgt:
+                fig.add_hline(y=tgt, line=dict(color="#94a3b8", dash="dash", width=1.2),
+                              annotation_text=f"Analüütikute siht {tgt:.0f}", annotation_position="top left",
+                              annotation_font_color="#64748b")
+            ymin = min(d["Close"].min(), dn.min()) * 0.97
+            ymax = max(d["Close"].max(), up.max(), tgt or 0) * 1.02
+            fig.update_layout(height=300, margin=dict(l=0, r=0, t=6, b=0), hovermode="x unified",
+                              legend=dict(orientation="h", y=-0.12), yaxis=dict(range=[ymin, ymax]))
+            show(fig)
 
-    st.subheader("Mis hinnangut mõjutab")
-    facs = sorted(res["factors"], key=lambda f: f[2], reverse=True)
-    pos = [f for f in facs if f[2] > 0.05][:7]
-    neg = [f for f in facs[::-1] if f[2] < -0.05][:7]
-    a, b = st.columns(2)
+    st.write("")
+    a, b = st.columns(2, gap="medium")
     with a:
-        st.markdown("**✅ Toetavad**")
-        for grp, nm, s, txt in pos:
-            st.markdown(f"- {txt} <span style='opacity:.6'>({A.GROUP_NAMES[grp]}, {s * 100:+.0f})</span>", unsafe_allow_html=True)
-        if not pos:
-            st.markdown("_Puuduvad_")
+        st.markdown(f"<div class='card'><div class='ct'>✅ Räägib poolt</div>{factor_rows(pos, True)}</div>",
+                    unsafe_allow_html=True)
     with b:
-        st.markdown("**⚠️ Vastu**")
-        for grp, nm, s, txt in neg:
-            st.markdown(f"- {txt} <span style='opacity:.6'>({A.GROUP_NAMES[grp]}, {s * 100:+.0f})</span>", unsafe_allow_html=True)
-        if not neg:
-            st.markdown("_Puuduvad_")
-    st.caption("Tehniline (ülevenitatus) ja hinna kaugus keskmistest töötavad vastupidi tavatarkusele: tugev tõus on "
-               "ettevaatusmärk, tugev langus tõusuruum. 2022–2026 testis on aktsiad pärast kaugele venitamist "
-               "järgmistel kuudel keskmiselt keskmisele lähemale naasnud (vt 'Ajalooline test').")
+        st.markdown(f"<div class='card'><div class='ct'>⚠️ Räägib vastu</div>{factor_rows(neg, False)}</div>",
+                    unsafe_allow_html=True)
+    st.caption("NB: tugev tõus keskmistest kaugele loetakse siin ettevaatusmärgiks (keskmisele naasmine). "
+               "Miks – vt 📘 Õpetus.")
 
 # ---------------------------------------------------------------- Graafik
 
-with tabs[1]:
-    per = st.radio("Periood", ["3 kuud", "6 kuud", "1 aasta", "2 aastat", "5 aastat"], index=2, horizontal=True)
+with T_CHART:
+    per = st.segmented_control("Periood", ["3 kuud", "6 kuud", "1 aasta", "2 aastat", "5 aastat"], default="1 aasta",
+                               label_visibility="collapsed") or "1 aasta"
     n = {"3 kuud": 63, "6 kuud": 126, "1 aasta": 252, "2 aastat": 504, "5 aastat": 1300}[per]
     d = res["d"].tail(n)
     fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.03, row_heights=[0.55, 0.13, 0.16, 0.16],
@@ -271,7 +411,7 @@ with tabs[1]:
     fig.update_layout(height=820, xaxis_rangeslider_visible=False, hovermode="x unified",
                       margin=dict(l=0, r=0, t=30, b=0), legend=dict(orientation="h", y=1.04))
     fig.update_xaxes(rangebreaks=[dict(bounds=["sat", "mon"])])
-    st.plotly_chart(fig, use_container_width=True)
+    show(fig)
 
     last = res["d"].iloc[-1]
     st.markdown(
@@ -282,7 +422,7 @@ with tabs[1]:
 
 # ---------------------------------------------------------------- Fundamentaal
 
-with tabs[2]:
+with T_FUND:
     rows = [
         ("Turuväärtus", big(info.get("marketCap"))),
         ("P/E (viimased 12 kuud)", f"{info['trailingPE']:.1f}" if info.get("trailingPE") else "–"),
@@ -322,7 +462,7 @@ with tabs[2]:
 
 # ---------------------------------------------------------------- Analüütikud
 
-with tabs[3]:
+with T_ANAL:
     a, b = st.columns(2)
     with a:
         st.markdown("**Hinnasihid vs praegune hind**")
@@ -337,7 +477,7 @@ with tabs[3]:
                                          hovertemplate=f"{lbl}: {val:.2f} ({pct(val / price - 1)})<extra></extra>"))
             fig.add_vline(x=price, line=dict(color=VIOLET, width=2, dash="dash"), annotation_text=f"Praegu {price:.0f}")
             fig.update_layout(height=220, showlegend=False, margin=dict(l=0, r=0, t=40, b=10), yaxis=dict(visible=False))
-            st.plotly_chart(fig, use_container_width=True)
+            show(fig)
             st.caption(f"{info.get('numberOfAnalystOpinions', '?')} analüütikut · konsensus {info.get('recommendationMean', 0):.2f}/5 "
                        f"(1 = tugev ost, 5 = müü) · siht on 12 kuu peale")
         else:
@@ -354,7 +494,7 @@ with tabs[3]:
                 fig.add_trace(go.Bar(x=[lbl.get(p, p) for p in r["period"]], y=r[col], name=nm, marker_color=colr,
                                      marker_line=dict(width=2, color="rgba(0,0,0,0)")))
             fig.update_layout(barmode="stack", height=260, margin=dict(l=0, r=0, t=10, b=10), legend=dict(orientation="h", y=-0.2))
-            st.plotly_chart(fig, use_container_width=True)
+            show(fig)
         else:
             st.info("Soovituste ajalugu pole.")
 
@@ -380,7 +520,7 @@ with tabs[3]:
 
 # ---------------------------------------------------------------- Ajalooline test
 
-with tabs[4]:
+with T_BT:
     st.markdown(
         f"""
 Kui hästi oleks **ainult tehniline osa** {ticker} puhul viimase ~4 aasta jooksul töötanud.
@@ -411,7 +551,7 @@ Fundamentaal- ja analüütikuandmeid ajaloo kohta pole, neid see test ei kata.
 
 # ---------------------------------------------------------------- Võrdlus
 
-with tabs[5]:
+with T_CMP:
     lst = st.text_input("Tickerid komaga eraldatult", value="AAPL, MSFT, NVDA, GOOGL, AMZN, META, TSLA")
     if st.button("Võrdle", type="primary"):
         rows = []
@@ -440,7 +580,7 @@ with tabs[5]:
 
 # ---------------------------------------------------------------- Õpetus
 
-with tabs[6]:
+with T_HELP:
     st.subheader("📘 Kuidas seda lehte lugeda ja aktsiat analüüsida")
     st.markdown(
         """
@@ -644,5 +784,78 @@ ajalugu pole saadaval.
 """
         )
 
-st.divider()
-st.caption("Andmed: Yahoo Finance (võivad olla kuni 15 min viitega). Reeglipõhine mudel, mitte investeerimisnõuanne.")
+
+    with st.expander("⚙️ Kuidas hinnang arvutatakse"):
+        st.markdown(
+            """
+**4 gruppi, igaüks −100 … +100:**
+- **Tehniline (lühiajaline):** RSI, MACD, Bollinger, hind vs 20p keskmine, 1 kuu liikumine
+- **Tehniline (ülevenitatus):** kui kaugel on hind 200p keskmisest, 3/6 kuu tõus, tugevus vs S&P 500.
+  *Kaugele tõusnud = ettevaatust, kaugele langenud = tõusuruum* (ajaloos nii töötanud)
+- **Fundamentaalne:** P/E, PEG, kasv, marginaal, ROE, võlg, vaba rahavoog
+- **Analüütikud:** keskmine hinnasiht ja konsensussoovitus
+
+**Kaalud horisondi järgi:**
+
+| Grupp | 4 näd | 12 näd | 26 näd |
+|---|---|---|---|
+| Tehniline (lühiajaline) | 35% | 10% | 5% |
+| Tehniline (ülevenitatus) | 30% | 30% | 25% |
+| Fundamentaalne | 15% | 30% | 35% |
+| Analüütikud | 20% | 30% | 35% |
+
+**Hinnavahemik:** arvutatakse aktsia enda viimase aasta volatiilsusest (80% tõenäosusega
+jääb hind sinna vahele). Vahemiku keskpunkti nihutab skoor. Turu pikaajaline keskmine
+tootlus (~7% aastas) on arvestatud.
+
+**Päeva ideed:** iga päev skaneeritakse ~40 USA suurettevõtet. Järjestus põhineb
+12 ja 26 nädala skooride keskmisel. Ühest sektorist võetakse maksimaalselt üks idee.
+"""
+        )
+
+# ---------------------------------------------------------------- Päeva ideed
+# (täidetakse viimasena, et ülejäänud leht jõuaks enne skaneerimist ekraanile)
+
+with T_IDEAS:
+    today = dt.date.today().isoformat()
+    st.markdown(f"""<div class="card"><div class="ct">💡 Päeva 3 ideed analüüsiks<span class="hint">{dt.date.today():%d.%m.%Y}</span></div>
+<div class="fg" style="font-size:13.5px;color:var(--ink2)">Mudel skaneerib iga päev {len(UNIVERSE)} USA suurettevõtet ja valib 3 kõrgeima
+skooriga aktsiat eri sektoritest (12 + 26 nädala vaade). Need on <b>ideed edasiseks uurimiseks</b>, mitte ostusoovitus.</div></div>""",
+                unsafe_allow_html=True)
+    st.write("")
+    with st.spinner("Skaneerin aktsiaid… (esimest korda päevas ~30 sek)"):
+        picks, scanned = daily_ideas(today)
+    if not picks:
+        st.info("Ideid ei õnnestunud leida. Andmeallikas võib olla ajutiselt kättesaamatu. Proovi hiljem uuesti.")
+    else:
+        cols = st.columns(len(picks), gap="medium")
+        for i, (col, p) in enumerate(zip(cols, picks), start=1):
+            with col:
+                t = SIG_TONE[p["v26"]["signal"]]
+                pros = "".join(f"<li>{esc(x)}</li>" for x in p["pros"])
+                con = f"<div class='fg' style='margin-top:8px;color:#c9302f'>⚠️ {esc(p['con'])}</div>" if p["con"] else ""
+                warn = "<div class='note' style='margin-top:10px'>📅 Tulemused lähipäevil – suurem kõikumine</div>" if p["earnings_soon"] else ""
+                ups = f"<span class='pill {tone(p['upside'])}'>{pct(p['upside'])}</span>" if p["upside"] is not None else "–"
+                st.markdown(f"""
+<div class="card sig" style="--accent:{TONE_COLOR[t]}">
+  <div class="top"><span class="h">#{i} · {esc(p['sector'])}</span><span class="conf">skoor {p['score'] * 100:+.0f}</span></div>
+  <div style="font-size:22px;font-weight:800;margin-top:10px;color:var(--ink)">{esc(p['ticker'])}</div>
+  <div class="fg" style="font-size:13px">{esc(p['name'])} · {money(p['price'])}</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">
+    <span class='fg' style='align-self:center'>12 näd</span>{sig_pill(p['v12']['signal'])}
+    <span class='fg' style='align-self:center'>26 näd</span>{sig_pill(p['v26']['signal'])}</div>
+  <div class="stats">
+    <div class="stat"><div class="k">26 näd oodatav</div><div class="v" style="color:{TONE_COLOR[tone(p['v26']['exp_ret'])]}">{pct(p['v26']['exp_ret'])}</div></div>
+    <div class="stat"><div class="k">Analüütikute siht</div><div class="v">{ups}</div></div>
+  </div>
+  <div class="ct" style="margin:14px 0 4px;font-size:13px">Miks</div>
+  <ul style="margin:0 0 0 18px;padding:0;font-size:13.5px;color:var(--ink2);line-height:1.5">{pros}</ul>
+  {con}{warn}
+</div>""", unsafe_allow_html=True)
+                st.button(f"Ava {p['ticker']} analüüs →", key=f"idea_{p['ticker']}", on_click=_open, args=(p["ticker"],),
+                          use_container_width=True)
+        st.caption(f"Skaneeritud {scanned}/{len(UNIVERSE)} aktsiat. Värskendatakse kord päevas. "
+                   "Enne otsust vaata alati läbi täisanalüüs, eriti fundamentaal ja riskid.")
+
+st.markdown("<div class='foot'>Andmed: Yahoo Finance (kuni 15 min viitega) · Reeglipõhine mudel · "
+            "Informatiivne tööriist, mitte investeerimisnõuanne</div>", unsafe_allow_html=True)

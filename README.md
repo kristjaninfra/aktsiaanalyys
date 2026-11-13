@@ -10,9 +10,16 @@ brauseris aadressil http://localhost:8501. Peatamiseks sulge Terminali aken.
 
 ## Failid
 
+- `style.css`, `.streamlit/config.toml` – kujundus ja teema
+
 - `app.py` – kasutajaliides (Streamlit)
 - `analysis.py` – andmed (Yahoo Finance), indikaatorid, skoorid, ajalooline test
 - `requirements.txt` – Pythoni paketid
+
+## Päeva ideed
+
+Iga päev skaneeritakse ~40 USA suurettevõtet ja näidatakse 3 kõrgeima 12+26 nädala
+skooriga aktsiat (max 1 sektori kohta). Ideed uurimiseks, mitte ostusoovitus.
 
 ## Mudel lühidalt
 
