@@ -1,7 +1,7 @@
 # Aktsiaanalüüs
 
 Kohalik rakendus: otsi aktsiat nime või tickeri järgi (pakub ise valikuid) → hind, graafik, tehniline ja fundamentaalne
-analüüs, analüütikute sihid ning 1 / 4 / 12 nädala hinnang koos hinnavahemikuga.
+analüüs, analüütikute sihid ning 4 / 12 / 26 nädala hinnang koos hinnavahemikuga. Vahelehel „📘 Õpetus“ on seletatud, kuidas iga rida lugeda.
 
 ## Käivitamine
 
@@ -20,8 +20,8 @@ brauseris aadressil http://localhost:8501. Peatamiseks sulge Terminali aken.
 - Horisondi kaalud: lühike vaade → tehniline, pikk vaade → fundamentaal + analüütikud
 - Hinna kaugus keskmistest ja momentum on **pööratud** (keskmisele naasmine):
   2022–2026 testis 20 USA suurettevõttel ennustas "trend üles = ost" vastupidiselt.
-  Kontrolltest 20 teise aktsiaga: korrelatsioon positiivne 75–90% aktsiatest,
-  ostusignaali järel 12 näd keskmine tootlus 6,6% vs 4,2% baas.
+  Kontrolltest 20 teise aktsiaga: korrelatsioon positiivne 70–90% aktsiatest,
+  ostusignaali järel keskmine tootlus 12 näd 6,6% (baas 4,2%), 26 näd 10,6% (baas 8,8%).
 - Hinnavahemik = aktsia enda volatiilsus (80%), keskpunkti nihutab skoor.
 
 Informatiivne tööriist, mitte investeerimisnõuanne.

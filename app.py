@@ -111,7 +111,7 @@ with st.sidebar:
 - **Fundamentaalne:** P/E, PEG, kasv, marginaal, ROE, võlg, vaba rahavoog
 - **Analüütikud:** keskmine hinnasiht ja konsensussoovitus
 
-**Kaalud horisondi järgi:** 1 nädal → peamiselt tehniline; 12 nädalat → rohkem
+**Kaalud horisondi järgi:** 4 nädalat → rohkem tehniline; 26 nädalat → peamiselt
 fundamentaal ja analüütikud.
 
 **Hinnavahemik:** aktsia enda volatiilsusest (80% tõenäosusega jääb hind
@@ -154,12 +154,12 @@ c4.metric("Analüütikute siht (12 kuud)", money(tgt, cur), pct(tgt / price - 1)
 for w in res["warnings"]:
     st.warning(w)
 
-tabs = st.tabs(["Ülevaade", "Graafik", "Fundamentaal", "Analüütikud ja uudised", "Ajalooline test", "Võrdlus"])
+tabs = st.tabs(["Ülevaade", "Graafik", "Fundamentaal", "Analüütikud ja uudised", "Ajalooline test", "Võrdlus", "📘 Õpetus"])
 
 # ---------------------------------------------------------------- Ülevaade
 
 with tabs[0]:
-    st.subheader("Hinnang 1–12 nädalaks")
+    st.subheader("Hinnang 4–26 nädalaks")
     cols = st.columns(3)
     for col, (label, v) in zip(cols, res["views"].items()):
         with col, st.container(border=True):
@@ -172,7 +172,7 @@ with tabs[0]:
                 f"80% vahemik **{v['low']:.2f} – {v['high']:.2f}**",
             ]))
     st.caption("Skoor −100 … +100. Kindlus näitab, kas grupid on omavahel ühel meelel. "
-               "1 nädala vaade on ajaloos olnud nõrgim – suhtu sellesse kui müra lähedasse.")
+               "Lühem vaade on ebakindlam. Seletus vahelehel 📘 Õpetus.")
 
     left, right = st.columns([1, 1.3])
     with left:
@@ -189,27 +189,29 @@ with tabs[0]:
 
     with right:
         st.markdown("**Hinnaprognoos (80% vahemik)**")
-        d = res["d"].tail(126)
+        d = res["d"].tail(252)
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=d.index, y=d["Close"], name="Hind", line=dict(color=BLUE, width=2),
                                  hovertemplate="%{x|%d.%m.%Y}: %{y:.2f}<extra></extra>"))
         last_date = d.index[-1]
-        fut = pd.bdate_range(last_date, periods=61)
-        v12 = res["views"]["12 nädalat"]
-        mu_d = math.log(v12["mid"] / price) / 60
+        L = A.LONGEST
+        fut = pd.bdate_range(last_date, periods=L + 1)
         sd = res["sigma_d"]
-        t = np.arange(61)
-        mid = price * np.exp(mu_d * t)
-        up = price * np.exp(mu_d * t + A.Z80 * sd * np.sqrt(t))
-        dn = price * np.exp(mu_d * t - A.Z80 * sd * np.sqrt(t))
+        t = np.arange(L + 1)
+        kx = [0] + [v["days"] for v in res["views"].values()]
+        ky = [0.0] + [math.log(v["mid"] / price) for v in res["views"].values()]
+        mu_t = np.interp(t, kx, ky)  # oodatav tee läbib iga horisondi punkti
+        mid = price * np.exp(mu_t)
+        up = price * np.exp(mu_t + A.Z80 * sd * np.sqrt(t))
+        dn = price * np.exp(mu_t - A.Z80 * sd * np.sqrt(t))
         fig.add_trace(go.Scatter(x=list(fut) + list(fut[::-1]), y=list(up) + list(dn[::-1]), fill="toself",
                                  fillcolor="rgba(42,120,214,0.15)", line=dict(width=0), name="80% vahemik", hoverinfo="skip"))
         fig.add_trace(go.Scatter(x=fut, y=mid, name="Oodatav", line=dict(color=BLUE, width=2, dash="dot"),
                                  hovertemplate="%{x|%d.%m.%Y}: %{y:.2f}<extra></extra>"))
         for label, v in res["views"].items():
-            x = fut[min(v["days"], 60)]
+            x = fut[min(v["days"], L)]
             fig.add_trace(go.Scatter(x=[x], y=[v["mid"]], mode="markers+text", marker=dict(size=9, color=BLUE),
-                                     text=[label if v["days"] == 60 else ""], textposition="top center", showlegend=False,
+                                     text=[f"{v['days'] // 5} näd"], textposition="top center", showlegend=False,
                                      hovertemplate=f"{label}: %{{y:.2f}} ({v['low']:.2f}–{v['high']:.2f})<extra></extra>"))
         if tgt:
             fig.add_hline(y=tgt, line=dict(color=VIOLET, dash="dash", width=1.5),
@@ -400,8 +402,9 @@ Fundamentaal- ja analüütikuandmeid ajaloo kohta pole, neid see test ei kata.
         st.dataframe(pd.DataFrame({c: [fmt[i].format(v) if pd.notna(v) else "–" for i, v in show[c].items()] for c in show.columns},
                                   index=show.index), use_container_width=True)
     st.info("Laiemas testis (20 USA suurettevõtet, mida mudeli häälestamisel ei kasutatud) oli korrelatsioon positiivne "
-            "75% (1 näd), 90% (4 näd) ja 80% (12 näd) aktsiatest. Ostusignaali järel oli 12 nädala keskmine tootlus "
-            "6,6% vs 4,2% kõigil päevadel. Eelis on olemas, aga tagasihoidlik – mitte garantii.")
+            "90% (4 näd), 80% (12 näd) ja 70% (26 näd) aktsiatest. Ostusignaali järel oli keskmine tootlus "
+            "12 nädalaga 6,6% (kõik päevad 4,2%) ja 26 nädalaga 10,6% (kõik päevad 8,8%). "
+            "Eelis on olemas, aga tagasihoidlik – mitte garantii.")
 
 # ---------------------------------------------------------------- Võrdlus
 
@@ -419,6 +422,7 @@ with tabs[5]:
                 for lbl, v in rs["views"].items():
                     row[f"{lbl}"] = f"{SIGNAL_ICON[v['signal']]} {v['signal']} ({v['score'] * 100:+.0f})"
                 row["12 näd oodatav"] = pct(rs["views"]["12 nädalat"]["exp_ret"])
+                row["26 näd oodatav"] = pct(rs["views"]["26 nädalat"]["exp_ret"])
                 row["Analüütikute siht"] = pct(inf["targetMeanPrice"] / rs["price"] - 1) if inf.get("targetMeanPrice") else "–"
                 row["Forward P/E"] = round(inf["forwardPE"], 1) if inf.get("forwardPE") else None
                 row["_s"] = rs["views"]["12 nädalat"]["score"]
@@ -430,6 +434,212 @@ with tabs[5]:
         df = pd.DataFrame(rows).sort_values("_s", ascending=False).drop(columns="_s")
         st.dataframe(df, hide_index=True, use_container_width=True)
         st.caption("Järjestatud 12 nädala skoori järgi.")
+
+# ---------------------------------------------------------------- Õpetus
+
+with tabs[6]:
+    st.subheader("📘 Kuidas seda lehte lugeda ja aktsiat analüüsida")
+    st.markdown(
+        """
+Aktsia hinda mõjutavad kolm asja: **ettevõtte enda tulemused** (fundamentaal),
+**turu meeleolu ja hinnaliikumine** (tehniline) ja **ootused** (analüütikud).
+See leht näitab kõiki kolme ja paneb need ühte hinnangusse. Allpool on iga osa
+lahti seletatud: mida see näitab, miks seda vaja on ja kuidas seda vaadata.
+"""
+    )
+
+    with st.expander("🧭 Kiire tööjärjekord: kuidas ühte aktsiat 10 minutiga analüüsida", expanded=True):
+        st.markdown(
+            """
+1. **Ülevaade → hinnangukaardid.** Vaata, mis signaal on 4, 12 ja 26 nädalal. Kas kõik
+   näitavad samas suunas? Kui jah ja kindlus on *kõrge*, on pilt selgem.
+2. **Ülevaade → „Mis hinnangut mõjutab“.** Loe läbi toetavad ja vastu räägivad
+   põhjused. See on kõige tähtsam osa: saad aru, *miks* skoor on selline.
+3. **Fundamentaal.** Kas ettevõte kasvab, teenib kasumit ja pole üle võlgu?
+   Kas hind (P/E) on kasvu suhtes mõistlik?
+4. **Analüütikud.** Kui palju on hinnasiht praegusest kõrgemal? Kas soovitusi on
+   viimastel kuudel tõstetud või langetatud?
+5. **Graafik.** Kas hind on tõusutrendis või languses? Kas RSI näitab ülekuumenemist?
+6. **Kollased hoiatused** lehe ülaosas: tulemuste avaldus lähipäevil tähendab
+   suuremat hinnakõikumist ja suuremat riski.
+7. **Ajalooline test.** Kas mudel on just *selle* aktsia puhul varem töötanud?
+   Kui korrelatsioon on negatiivne, usalda skoori vähem.
+8. **Otsus on sinu.** Mudel on abivahend. Mõtle alati, kui palju oled valmis kaotama.
+"""
+        )
+
+    with st.expander("📊 Ülevaade: hinnangukaardid"):
+        st.markdown(
+            """
+| Rida | Mida näitab | Kuidas vaadata |
+|---|---|---|
+| **Signaal** (OST … MÜÜ) | Kokkuvõte skoorist | OST ≥ +25, KERGE OST +10…+25, HOIA −10…+10, KERGE MÜÜK −10…−25, MÜÜ ≤ −25 |
+| **Skoor** | Kõigi gruppide kaalutud keskmine, −100 kuni +100 | Mida kaugemal nullist, seda tugevam signaal. Alla ±10 on sisuliselt neutraalne |
+| **Kindlus** | Kas grupid on omavahel ühel meelel | *Kõrge* = tehniline, fundamentaal ja analüütikud näitavad samas suunas. *Madal* = vastuolulised signaalid, ole ettevaatlik |
+| **Tõusu tõenäosus** | Hinnanguline võimalus, et hind on horisondi lõpus kõrgem | 50% = mündiviske. 60%+ on juba märgatav eelis. Üle 70% tuleb harva |
+| **Oodatav hind** | Vahemiku keskpunkt | See pole lubadus, vaid kõige tõenäolisem *keskmine* tulemus |
+| **80% vahemik** | 8 korral 10-st peaks hind jääma sinna vahele | Lai vahemik = volatiilne aktsia = suurem risk. Alumine piir näitab realistlikku halba stsenaariumi |
+
+**Miks kolm horisonti?** Lühikesel ajal liigutab hinda peamiselt meeleolu, pikal
+ajal ettevõtte tulemused. Seetõttu on 4 nädala hinnangus rohkem tehnilist analüüsi
+ja 26 nädala hinnangus rohkem fundamentaali ja analüütikuid.
+
+**Grupiskoorid** (tulpdiagramm) näitavad iga grupi skoori eraldi: sinine = positiivne,
+oranž = negatiivne.
+
+**Hinnaprognoosi graafik:** sinine joon on viimase aasta hind, punktiir on oodatav tee
+ja helesinine lehter on 80% vahemik. Lehter läheb laiemaks, sest mida kaugemale
+tulevikku, seda ebakindlam. Lilla katkendjoon on analüütikute 12 kuu hinnasiht.
+"""
+        )
+
+    with st.expander("📈 Graafik: küünlad, keskmised, RSI, MACD"):
+        st.markdown(
+            """
+**Küünlad (candlesticks)**: iga küünal on üks päev. Roheline = päev lõppes tõusuga,
+punane = langusega. Paks osa näitab avamis- ja sulgemishinda, peenikesed jooned päeva
+kõrgeimat ja madalaimat hinda.
+
+**Libisevad keskmised (SMA)**: silutud hinnajoon, mis näitab trendi.
+- **SMA20** (kollane): lühike trend, umbes 1 kuu
+- **SMA50** (oranž): keskmine trend, umbes 2,5 kuud
+- **SMA200** (lilla): pikk trend, umbes 1 aasta. Kõige tähtsam joon
+- *Kuidas vaadata:* hind üle SMA200 = pikaajaline tõusutrend. Kui SMA50 lõikab SMA200
+  alt üles, on see „kuldne rist“ (tõusumärk), ülevalt alla „surmarist“ (langusmärk).
+- ⚠️ *Selle mudeli eripära:* kui hind on SMA200-st **väga kaugel üleval** (nt +20%),
+  on see ettevaatusmärk. Ajaloos on sellised aktsiad järgnevatel kuudel sageli jahtunud.
+
+**Bollingeri ribad** (hall ala): tavapärane kõikumisvahemik, 20 päeva keskmine ±2
+standardhälvet. Hind üle ülemise riba = lühiajaliselt üle ostetud, alla alumise
+= üle müüdud. Kitsad ribad = vaikne periood, millele järgneb tihti suurem liikumine.
+
+**Maht**: mitu aktsiat päevas kaubeldi. Suur maht hinnaliikumise ajal = liikumine
+on „päris“, suured tegijad on asjas. Suur hinnamuutus väikese mahuga on nõrgem signaal.
+
+**RSI (0–100)**: kui tugevalt on viimasel ajal ostetud või müüdud.
+- **üle 70** = üle ostetud, tõus võib väsida
+- **alla 30** = üle müüdud, võimalik põrge
+- **45–65** = terve, rahulik tõus
+
+**MACD**: näitab, kas trend kiireneb või aeglustub.
+- Sinine joon üle oranži = tõusumomentum, all = langusmomentum
+- Tulbad (histogramm) näitavad nende vahet. Kasvavad rohelised tulbad = tõus tugevneb,
+  kahanevad = tõus väsib
+
+**ATR**: keskmine päevane hinnakõikumine. Aitab hinnata, kui kaugele *stop-loss*
+panna: tavaliselt 2–3 × ATR praegusest hinnast allapoole.
+"""
+        )
+
+    with st.expander("🏢 Fundamentaal: kas ettevõte on hea ja kas hind on mõistlik"):
+        st.markdown(
+            """
+| Näitaja | Mida näitab | Hea | Halb |
+|---|---|---|---|
+| **P/E** | Hind ÷ aasta kasum. Mitu aastat kasumit maksad | 10–20 | üle 40 või negatiivne |
+| **Forward P/E** | Sama, aga *järgmise* aasta oodatava kasumiga | madalam kui praegune P/E = kasum kasvab | |
+| **PEG** | P/E ÷ kasumi kasvutempo. Arvestab kasvu | alla 1 = odav kasvu suhtes | üle 2–3 = kallis |
+| **P/B** | Hind ÷ raamatupidamislik vara | alla 3 | sõltub palju sektorist |
+| **EV/EBITDA** | Ettevõtte koguväärtus ÷ ärikasum (arvestab võlga) | alla 12 | üle 25 |
+| **Käibe kasv** | Kui palju müük aastaga kasvas | üle 10% | negatiivne |
+| **Kasumi kasv** | Kui palju kasum aastaga kasvas | üle 15% | negatiivne |
+| **Bruto-/puhasmarginaal** | Mitu senti 1 eurost müügist jääb kasumiks | puhasmarginaal üle 15% | alla 5% või kahjum |
+| **ROE** | Omakapitali tootlus. Kui tõhusalt raha teenitakse | üle 15% | alla 5% |
+| **Võlg / omakapital** | Võlakoormus | alla 100% | üle 200% |
+| **Vaba rahavoog (FCF)** | Raha, mis jääb pärast investeeringuid. Kõige ausam kasuminäitaja | positiivne ja kasvav | negatiivne |
+| **Dividenditootlus** | Aastane dividend ÷ hind | stabiilsetel ettevõtetel 2–5% | väga kõrge (üle 8%) võib tähendada probleemi |
+| **Beeta** | Kõikumine võrreldes turuga | 1 = nagu turg | üle 1,5 = palju kõikuvam |
+| **Lühikeseks müüdud** | Osa aktsiatest, mille langusele panustatakse | alla 5% | üle 15% = paljud ootavad langust |
+
+**Kõige tähtsam reegel:** kõrge P/E pole iseenesest halb, kui ettevõte kasvab kiiresti
+(vaata PEG-i). Odav aktsia pole iseenesest hea, kui käive ja kasum langevad.
+Võrdle alati sama sektori ettevõtetega: tehnoloogias on P/E 30 normaalne,
+pankades kallis.
+"""
+        )
+
+    with st.expander("🎯 Analüütikud: mida suured pangad arvavad"):
+        st.markdown(
+            """
+- **Hinnasiht** on analüütikute keskmine ootus hinnale **12 kuu pärast**. Vaata ka
+  madalaimat ja kõrgeimat sihti: suur vahe tähendab, et ekspertide arvamused lähevad lahku.
+- **Konsensus 1–5**: 1 = tugev ost, 3 = hoia, 5 = müü. Alla 2 on väga positiivne.
+- **Soovituste jaotus**: kas „ost“ soovitusi tuleb kuude lõikes juurde või jääb vähemaks.
+  Suund on sageli tähtsam kui tase.
+- **Reitingumuutused**: kõige värskem info. Mitu järjestikust *tõstmist* (⬆) on
+  positiivne märk.
+- ⚠️ Analüütikud on sageli liiga optimistlikud ja reageerivad hinnale hilinemisega.
+  Kasuta neid ühe sisendina, mitte tõena.
+- Kui hind on juba **üle** keskmise hinnasihi, on suur osa ootustest hinnas.
+"""
+        )
+
+    with st.expander("🔁 Ülevenitatus ehk miks „tugev tõus“ on siin ettevaatusmärk"):
+        st.markdown(
+            """
+Levinud tarkus ütleb: *„trend on sõber, osta tõusvat aktsiat“*. Testisin seda
+40 USA suurettevõtte andmetel aastatel 2022–2026. Üksiku aktsia puhul 1–6 kuu
+vaates tulemus kinnitust ei leidnud: aktsiad, mis olid oma keskmisest väga kaugele
+tõusnud, kippusid järgmistel kuudel jahtuma. Kaugele langenud aktsiad kippusid
+taastuma. Seda nimetatakse **keskmisele naasmiseks** (mean reversion).
+
+Seepärast annab mudel:
+- **miinuspunkte**, kui hind on palju üle 200 päeva keskmise või on 3–6 kuuga palju tõusnud
+- **plusspunkte**, kui hind on keskmisest tugevalt allpool
+
+⚠️ See ei kehti alati. Kui ettevõttel on päris probleem (kahjum, skandaal, langev
+käive), võib langus jätkuda. Seepärast vaata alati ka fundamentaali: **odav + terve
+ettevõte** on hea kombinatsioon, **odav + kehvad tulemused** võib olla lõks.
+"""
+        )
+
+    with st.expander("🧪 Ajalooline test: kas mudelit saab selle aktsia puhul usaldada"):
+        st.markdown(
+            """
+Test vaatab iga päeva viimase ~4 aasta jooksul: mis oli tol päeval tehniline skoor
+ja mis juhtus hinnaga järgmise 4 / 12 / 26 nädala jooksul.
+
+- **Tõusis (kõik päevad)**: kui tihti hind lihtsalt tõusis, ükskõik mis signaal oli.
+  See on võrdlusbaas („osta ja hoia“).
+- **Ostusignaal: tõusis**: kui tihti hind tõusis pärast ostusignaali. **Peab olema
+  baasist kõrgem**, muidu signaal ei lisa midagi.
+- **Ostusignaal: keskm. tootlus** vs **Keskm. tootlus (kõik)**: sama mõte tootluse kohta.
+- **Korrelatsioon**: +0,1…+0,3 = skoor on suunda hästi näidanud. Lähedal nullile = pole
+  midagi näidanud. Negatiivne = mudel on selle aktsia puhul eksinud, usalda vähem.
+
+Piirang: test katab ainult tehnilist osa, sest fundamentaal- ja analüütikuandmete
+ajalugu pole saadaval.
+"""
+        )
+
+    with st.expander("⚠️ Riskid ja head tavad"):
+        st.markdown(
+            """
+- **Ükski mudel ei ennusta tulevikku kindlalt.** 60% tõenäosus tähendab, et 4 korral 10-st läheb teisiti.
+- **Hajuta.** Ära pane kõike ühte aktsiasse. 10–20 eri sektori aktsiat või indeksifond vähendab riski oluliselt.
+- **Tulemuste avaldused** (kollane hoiatus) võivad liigutada hinda ühe päevaga ±10–20%.
+- **Mõtle enne ostu läbi väljumine:** mis hinnaga müüd kahjumiga (stop-loss) ja mis hinnaga võtad kasumi.
+  80% vahemiku alumine piir ja ATR aitavad seda paika panna.
+- **Kulud ja maksud:** sagedane kauplemine sööb tootluse ära. Eestis aitab investeerimiskonto maksu edasi lükata.
+- **Indeksifond (nt S&P 500) on alati võrdlusbaas.** Kui sa ei usu, et valitud aktsia teeb
+  indeksist paremini, on indeks lihtsam valik.
+- See tööriist on õppimiseks ja analüüsi toeks, **mitte investeerimisnõuanne**.
+"""
+        )
+
+    with st.expander("📖 Sõnastik"):
+        st.markdown(
+            """
+- **Ticker**: aktsia lühinimi börsil (AAPL = Apple)
+- **Volatiilsus**: kui palju hind kõigub. 25% aastas on tavaline suurettevõttel, 50%+ on väga kõikuv
+- **52 näd vahemik**: viimase aasta madalaim ja kõrgeim hind
+- **Momentum**: hinnaliikumise hoog, ehk kui palju on hind viimastel kuudel muutunud
+- **Suhteline tugevus**: kas aktsia on teinud turust (S&P 500) paremini või halvemini
+- **S&P 500 / SPY**: USA 500 suurima ettevõtte indeks, „turu“ mõõdupuu
+- **Turuväärtus**: aktsia hind × aktsiate arv, ehk kogu ettevõtte väärtus börsil
+- **Stop-loss**: eelnevalt paika pandud hind, millest allapoole müüd, et kahjum ei kasvaks
+"""
+        )
 
 st.divider()
 st.caption("Andmed: Yahoo Finance (võivad olla kuni 15 min viitega). Reeglipõhine mudel, mitte investeerimisnõuanne.")

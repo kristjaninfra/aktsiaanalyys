@@ -1,4 +1,4 @@
-"""Aktsiaanalüüsi mootor: andmed, indikaatorid, skoorid ja 1–12 nädala vaade.
+"""Aktsiaanalüüsi mootor: andmed, indikaatorid, skoorid ja 4–26 nädala vaade.
 
 Kõik skoorid on vahemikus -1 … +1 (rakenduses näidatakse -100 … +100).
 Mudel on reeglipõhine ja läbipaistev. See EI ole investeerimisnõuanne.
@@ -18,13 +18,14 @@ import logging  # noqa: E402
 logging.getLogger("yfinance").setLevel(logging.CRITICAL)
 
 # Horisont -> kauplemispäevade arv
-HORIZONS = {"1 nädal": 5, "4 nädalat": 20, "12 nädalat": 60}
+HORIZONS = {"4 nädalat": 20, "12 nädalat": 60, "26 nädalat": 130}
+LONGEST = max(HORIZONS.values())
 
 # Kui palju iga grupp igal horisondil kaalub
 WEIGHTS = {
-    5: {"tech_short": 0.55, "tech_long": 0.25, "analyst": 0.10, "fund": 0.10},
     20: {"tech_short": 0.35, "tech_long": 0.30, "analyst": 0.20, "fund": 0.15},
     60: {"tech_short": 0.10, "tech_long": 0.30, "analyst": 0.30, "fund": 0.30},
+    130: {"tech_short": 0.05, "tech_long": 0.25, "analyst": 0.35, "fund": 0.35},
 }
 
 GROUP_NAMES = {
