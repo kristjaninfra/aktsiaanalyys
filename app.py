@@ -215,7 +215,7 @@ def _open(tk):
 st.markdown("""<div class="brand"><div class="logo">↗</div><div class="t">Aktsiaanalüüs</div>
 <div class="s">hinnang 4–26 nädalaks</div></div>""", unsafe_allow_html=True)
 
-search_col, quick_col = st.columns([1.1, 1.4], vertical_alignment="bottom")
+search_col, _sp = st.columns([2, 1])
 with search_col:
     if st_searchbox is not None:
         picked = st_searchbox(
@@ -233,8 +233,7 @@ with search_col:
         if typed and typed.strip().upper() != st.session_state.get("last_search"):
             st.session_state.last_search = typed.strip().upper()
             st.session_state.ticker = typed.strip().upper()
-with quick_col:
-    st.pills("Kiirvalik", QUICK, key="quick", on_change=_quick_pick, label_visibility="collapsed")
+st.pills("Kiirvalik", QUICK, key="quick", on_change=_quick_pick, label_visibility="collapsed")
 
 ticker = st.session_state.ticker.strip().upper()
 
