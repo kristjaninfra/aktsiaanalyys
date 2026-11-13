@@ -21,24 +21,27 @@ try:
 except ImportError:  # varulahendus: tavaline tekstikast
     st_searchbox = None
 
-st.set_page_config(page_title="Aktsiaanalüüs", page_icon="📈", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Aktsiaanalüüs", page_icon="🌿", layout="wide", initial_sidebar_state="collapsed")
 st.markdown(f"<style>{(Path(__file__).parent / 'style.css').read_text()}</style>", unsafe_allow_html=True)
 
 # Värvid (valideeritud kategooriline palett) + staatusvärvid
-BLUE, ORANGE, AQUA, VIOLET, YELLOW = "#3b82f6", "#f97316", "#10b981", "#8b5cf6", "#f59e0b"
-UP, DOWN, NEUTRAL = "#10b981", "#f43f5e", "#94a3b8"
+BLUE, ORANGE, AQUA, VIOLET, YELLOW = "#5b7c99", "#c07a4b", "#6f9a76", "#8b6b45", "#c9a24a"
+UP, DOWN, NEUTRAL = "#7aa383", "#c4705a", "#a39686"
 SIG_TONE = {"OST": "up", "KERGE OST": "up", "HOIA": "flat", "KERGE MÜÜK": "down", "MÜÜ": "down"}
-TONE_COLOR = {"up": "#059669", "down": "#e11d48", "flat": "#64748b"}
+TONE_COLOR = {"up": "#4d7c5a", "down": "#a9533d", "flat": "#7d7366"}
 TONE_TINT = {"up": "#ecfdf5", "down": "#fff1f3", "flat": "#f5f8fd"}
 SIGNAL_ICON = {"OST": "▲▲", "KERGE OST": "▲", "HOIA": "■", "KERGE MÜÜK": "▼", "MÜÜ": "▼▼"}
+# Rahulikud, inimlikud nimed signaalidele (sisemiselt jääb OST/HOIA/MÜÜ)
+LABEL = {"OST": "Positiivne", "KERGE OST": "Pigem positiivne", "HOIA": "Neutraalne",
+         "KERGE MÜÜK": "Pigem ettevaatlik", "MÜÜ": "Ettevaatlik"}
 
 # Ühtne graafikute stiil
 pio.templates["moodne"] = go.layout.Template(layout=dict(
-    font=dict(family="Inter, -apple-system, Segoe UI, sans-serif", size=12, color="#475569"),
+    font=dict(family="Inter, -apple-system, Segoe UI, sans-serif", size=12, color="#6b6056"),
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-    xaxis=dict(showgrid=False, linecolor="#e5e9f2", zeroline=False, ticks=""),
-    yaxis=dict(gridcolor="#eef2f7", zeroline=False, ticks="", linecolor="rgba(0,0,0,0)"),
-    hoverlabel=dict(bgcolor="white", bordercolor="#e5e9f2", font=dict(color="#0f172a", family="Inter, sans-serif")),
+    xaxis=dict(showgrid=False, linecolor="#e8dfd0", zeroline=False, ticks=""),
+    yaxis=dict(gridcolor="#eee6d8", zeroline=False, ticks="", linecolor="rgba(0,0,0,0)"),
+    hoverlabel=dict(bgcolor="#fffcf6", bordercolor="#e8dfd0", font=dict(color="#2d2620", family="Inter, sans-serif")),
     legend=dict(bgcolor="rgba(0,0,0,0)", font=dict(size=12)),
     colorway=[BLUE, ORANGE, AQUA, YELLOW, VIOLET],
 ))
@@ -53,6 +56,7 @@ def show(fig):
 UNIVERSE = ("AAPL MSFT NVDA GOOGL AMZN META TSLA AVGO ORCL ADBE CRM AMD INTC QCOM CSCO NFLX "
             "JPM BAC GS V MA UNH LLY JNJ PFE MRK ABBV XOM CVX PG KO PEP COST WMT HD MCD NKE DIS BA CAT T VZ").split()
 QUICK = ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "TSLA", "META", "LHV1T.TL"]
+DEFAULT_WATCH = ["AAPL", "MSFT", "NVDA"]
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -123,6 +127,25 @@ def daily_ideas(day: str, n: int = 3):
     return picks, len(rows)
 
 
+@st.cache_data(ttl=900, show_spinner=False)
+def watch_summary(tickers: tuple):
+    """Jälgimisnimekirja lühiülevaade (paralleelselt, 15 min vahemälu)."""
+    bench = get_bench()
+
+    def one(tk):
+        try:
+            data = A.fetch(tk)
+            res = A.analyze(data, bench)
+            return {"ticker": tk, "name": data["info"].get("shortName") or tk, "price": res["price"],
+                    "chg": res["price"] / res["prev"] - 1, "v12": res["views"]["12 nädalat"],
+                    "cur": data["info"].get("currency", "USD")}
+        except Exception:
+            return {"ticker": tk, "error": True}
+
+    with ThreadPoolExecutor(max_workers=6) as ex:
+        return list(ex.map(one, tickers))
+
+
 # ---------------------------------------------------------------- vormindus
 
 def esc(x):
@@ -156,7 +179,7 @@ def tone(x):
 
 
 def sig_pill(signal):
-    return f"<span class='pill {SIG_TONE[signal]}'>{SIGNAL_ICON[signal]} {signal}</span>"
+    return f"<span class='pill {SIG_TONE[signal]}'><span class='dotc'></span>{LABEL[signal]}</span>"
 
 
 def sig_card(label, v, price, cur):
@@ -169,16 +192,16 @@ def sig_card(label, v, price, cur):
     mid = max(0, min(100, (v["mid"] - v["low"]) / span * 100)) if span else 50
     er = v["exp_ret"]
     return f"""
-<div class="card sig" style="--accent:{accent};--tint:{TONE_TINT[t]}">
+<div class="card sig" style="--accent-c:{accent}">
   <div class="top"><span class="h">{esc(label)}</span><span class="conf">kindlus: {esc(v['confidence'])}</span></div>
-  <div class="label">{SIGNAL_ICON[v['signal']]} {v['signal']}</div>
+  <div class="label">{LABEL[v['signal']]}</div>
   <div class="meter"><div class="dot" style="left:{dot:.1f}%"></div></div>
-  <div class="meter-l"><span>Müü −100</span><b>skoor {s:+.0f}</b><span>+100 Ost</span></div>
+  <div class="meter-l"><span>ettevaatlik</span><b>skoor {s:+.0f}</b><span>positiivne</span></div>
   <div class="stats">
     <div class="stat"><div class="k">Tõusu tõenäosus</div><div class="v">{v['p_up'] * 100:.0f}%</div></div>
     <div class="stat"><div class="k">Oodatav hind</div><div class="v">{money(v['mid'], cur)}<small style="color:{TONE_COLOR[tone(er)]}">{pct(er)}</small></div></div>
   </div>
-  <div class="rng"><div class="k">80% tõenäosusega vahemik · ▏praegu ● oodatav</div>
+  <div class="rng"><div class="k">Tõenäoline hinnavahemik (8 korda 10-st)</div>
     <div class="rbar"><div class="mid" style="left:{mid:.1f}%"></div><div class="now" style="left:{now:.1f}%"></div></div>
     <div class="rl"><span>{money(v['low'], cur)}</span><span>{money(v['high'], cur)}</span></div>
   </div>
@@ -198,8 +221,12 @@ def factor_rows(items, positive):
 
 # ---------------------------------------------------------------- otsing ja kiirvalikud
 
+qp = st.query_params
 if "ticker" not in st.session_state:
-    st.session_state.ticker = "AAPL"
+    st.session_state.ticker = (qp.get("t") or "AAPL").strip().upper()
+if "watch" not in st.session_state:
+    w = qp.get("w")
+    st.session_state.watch = [x for x in (w.split(",") if w is not None else DEFAULT_WATCH) if x]
 
 
 def _quick_pick():
@@ -213,16 +240,35 @@ def _open(tk):
     st.session_state.ticker = tk
 
 
-st.markdown("""<div class="brand"><div class="logo">↗</div><div class="t">Aktsiaanalüüs</div>
-<div class="s">hinnang 4–26 nädalaks</div></div>""", unsafe_allow_html=True)
+def _toggle_watch(tk):
+    w = st.session_state.watch
+    if tk in w:
+        w.remove(tk)
+    else:
+        w.append(tk)
 
+
+def _set_watch():
+    raw = st.session_state.get("watch_edit", "")
+    st.session_state.watch = [x.strip().upper() for x in raw.replace(";", ",").split(",") if x.strip()][:15]
+
+
+st.markdown("""<div class="brand"><div class="t">Aktsiaanalüüs</div>
+<div class="s">Rahulik ülevaade, kuhu aktsia järgmistel kuudel liikuda võiks</div></div>""", unsafe_allow_html=True)
+
+# Üleval: jälgimisnimekiri ja tänased ideed (täidetakse lehe lõpus, et analüüs ei peaks ootama)
+top_l, top_r = st.columns(2, gap="medium")
+watch_box = top_l.container(border=True)
+ideas_box = top_r.container(border=True)
+
+st.markdown("<div class='section'>Aktsia analüüs</div>", unsafe_allow_html=True)
 search_col, _sp = st.columns([2, 1])
 with search_col:
     if st_searchbox is not None:
         picked = st_searchbox(
             search_cached,
             label=None,
-            placeholder="🔎  Kirjuta nimi või ticker – nt apple, nvidia, lhv",
+            placeholder="Otsi ettevõtet, näiteks Apple, Nvidia või LHV",
             key="aktsia_otsing",
             debounce=300,
         )
@@ -237,6 +283,8 @@ with search_col:
 st.pills("Kiirvalik", QUICK, key="quick", on_change=_quick_pick, label_visibility="collapsed")
 
 ticker = st.session_state.ticker.strip().upper()
+st.query_params["t"] = ticker
+st.query_params["w"] = ",".join(st.session_state.watch)
 
 try:
     with st.spinner(f"Laen {ticker} andmeid…"):
@@ -286,8 +334,11 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+in_w = ticker in st.session_state.watch
+st.button("★ Jälgimisnimekirjas (eemalda)" if in_w else "☆ Lisa jälgimisnimekirja", on_click=_toggle_watch, args=(ticker,))
+
 for w in res["warnings"]:
-    st.markdown(f"<div class='note'>⚠️ <div>{esc(w)}</div></div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='note'><div>{esc(w)}</div></div>", unsafe_allow_html=True)
 
 # Kokkuvõte ühe pilguga, lihtsas keeles
 facs = sorted(res["factors"], key=lambda f: f[2], reverse=True)
@@ -296,30 +347,30 @@ neg = [f for f in facs[::-1] if f[2] < -0.05][:5]
 
 
 def plain_summary(res, info, price):
-    """Lühike seletus tavakeeles: mis on peamised põhjused."""
+    """Lühike seletus tavalises keeles."""
     g = res["groups"]
     out = []
     tl, fu = g.get("tech_long"), g.get("fund")
     if tl is not None and tl <= -0.4:
-        out.append("Aktsia on viimastel kuudel palju tõusnud ja on oma tavatasemest kõrgel. "
-                   "Ajalooliselt on sellisele tõusule sageli järgnenud jahtumine.")
+        out.append("Hind on viimastel kuudel tublisti tõusnud ja on praegu tavapärasest kõrgemal. "
+                   "Varem on sellistele tõusudele sageli järgnenud rahulikum periood.")
     elif tl is not None and tl >= 0.4:
-        out.append("Aktsia on viimastel kuudel palju langenud ja on oma tavatasemest madalal. "
-                   "Ajalooliselt on sellisele langusele sageli järgnenud taastumine.")
+        out.append("Hind on viimastel kuudel märgatavalt langenud ja on praegu tavapärasest madalamal. "
+                   "Varem on sellistele langustele sageli järgnenud taastumine.")
     if fu is not None and fu >= 0.3:
-        out.append("Ettevõtte numbrid (kasv ja kasumlikkus) on tugevad.")
+        out.append("Ettevõte ise on heas vormis: müük kasvab ja kasumlikkus on hea.")
     elif fu is not None and fu <= -0.15:
-        out.append("Ettevõtte numbrid on nõrgad: hind on kõrge või kasumlikkus kehv.")
+        out.append("Ettevõtte numbrid on pigem nõrgad – hind on kõrge või kasum kesine.")
     t = info.get("targetMeanPrice")
     if t:
         u = t / price - 1
         if u >= 0.15:
-            out.append(f"Analüütikud näevad 12 kuuga tõusuruumi {u * 100:.0f}%.")
+            out.append(f"Analüütikute hinnangul on aasta jooksul ruumi umbes {u * 100:.0f}% tõusuks.")
         elif u < 0:
-            out.append("Hind on juba analüütikute keskmisest hinnasihist kõrgemal.")
+            out.append("Hind on juba kõrgem kui analüütikute keskmine ootus.")
     if res["views"]["12 nädalat"]["confidence"] == "madal":
-        out.append("Signaalid on omavahel vastuolus, seega on kindlus madal.")
-    return " ".join(out) or "Selgeid tugevaid signaale ei ole – pilt on neutraalne."
+        out.append("Märgid on omavahel veidi vastuolus, nii et see hinnang on pigem ettevaatlik oletus.")
+    return " ".join(out) or "Tugevaid märke ühes ega teises suunas praegu ei ole."
 
 
 main = res["views"]["12 nädalat"]
@@ -327,13 +378,11 @@ vt = SIG_TONE[main["signal"]]
 pills = "".join(f"<span style='color:var(--ink2);font-size:13px;margin-left:6px'>{esc(l)}</span>{sig_pill(v['signal'])}"
                 for l, v in res["views"].items())
 st.markdown(f"""<div class="verdict" style="--vc:{TONE_COLOR[vt]}">
-<div class="head">Järgmise 3 kuu vaade: <span>{SIGNAL_ICON[main['signal']]} {main['signal']}</span></div>
+<div class="head">Kolme kuu vaates: <span>{LABEL[main['signal']].lower()}</span></div>
 <div class="plain">{esc(plain_summary(res, info, price))}</div>
 <div class="row">{pills}</div></div>""", unsafe_allow_html=True)
 
-tabs = st.tabs(["📊 Ülevaade", "💡 Päeva ideed", "📈 Graafik", "🏢 Ettevõte", "⚖️ Võrdlus", "📘 Õpetus"])
-T_OVER, T_IDEAS, T_CHART, T_FUND, T_CMP, T_HELP = tabs
-T_ANAL = T_FUND  # analüütikud samal vahelehel ettevõtte numbritega
+T_OVER = st.container()
 
 # ---------------------------------------------------------------- Ülevaade
 
@@ -355,14 +404,14 @@ with T_OVER:
             rows.append(f"""<div class="grp"><div>{esc(A.GROUP_NAMES[k])}</div>
 <div class="gtrack"><div class="gbar" style="left:{l:.1f}%;width:{w:.1f}%;background:{col}"></div></div>
 <div class="gval">{s:+.0f}</div></div>""")
-        st.markdown(f"""<div class="card" style="height:100%"><div class="ct">Grupiskoorid<span class="hint">−100 … +100</span></div>
+        st.markdown(f"""<div class="card" style="height:100%"><div class="ct">Millest hinnang koosneb<span class="hint">−100 … +100</span></div>
 {''.join(rows)}
 <div class="fg" style="margin-top:12px">Lühike vaade kaalub rohkem tehnilist osa, pikk vaade fundamentaali ja analüütikuid.</div></div>""",
                     unsafe_allow_html=True)
 
     with right:
         with st.container(border=True):
-            st.markdown("<div class='ct'>Hinnaprognoos<span class='hint'>viimane aasta + 26 nädalat ette</span></div>",
+            st.markdown("<div class='ct'>Hind ja võimalik suund<span class='hint'>viimane aasta ja pool aastat ette</span></div>",
                         unsafe_allow_html=True)
             d = res["d"].tail(252)
             fig = go.Figure()
@@ -378,10 +427,10 @@ with T_OVER:
             up = price * np.exp(mu_t + A.Z80 * sd * np.sqrt(t))
             dn = price * np.exp(mu_t - A.Z80 * sd * np.sqrt(t))
             fig.add_trace(go.Scatter(x=d.index, y=d["Close"], name="Hind", line=dict(color=BLUE, width=2),
-                                     fill="tozeroy", fillcolor="rgba(59,130,246,0.08)",
+                                     fill="tozeroy", fillcolor="rgba(91,124,153,0.08)",
                                      hovertemplate="%{x|%d.%m.%Y}: %{y:.2f}<extra></extra>"))
             fig.add_trace(go.Scatter(x=list(fut) + list(fut[::-1]), y=list(up) + list(dn[::-1]), fill="toself",
-                                     fillcolor="rgba(139,92,246,0.14)", line=dict(width=0), name="80% vahemik", hoverinfo="skip"))
+                                     fillcolor="rgba(201,162,74,0.16)", line=dict(width=0), name="80% vahemik", hoverinfo="skip"))
             fig.add_trace(go.Scatter(x=fut, y=mid, name="Oodatav", line=dict(color=VIOLET, width=2, dash="dot"),
                                      hovertemplate="%{x|%d.%m.%Y}: %{y:.2f}<extra></extra>"))
             for label, v in res["views"].items():
@@ -391,9 +440,9 @@ with T_OVER:
                                          text=[f"{v['days'] // 5} näd"], textposition="top center", showlegend=False,
                                          hovertemplate=f"{label}: %{{y:.2f}} ({v['low']:.2f}–{v['high']:.2f})<extra></extra>"))
             if tgt:
-                fig.add_hline(y=tgt, line=dict(color="#94a3b8", dash="dash", width=1.2),
+                fig.add_hline(y=tgt, line=dict(color="#a39686", dash="dash", width=1.2),
                               annotation_text=f"Analüütikute siht {tgt:.0f}", annotation_position="top left",
-                              annotation_font_color="#64748b")
+                              annotation_font_color="#6b6056")
             ymin = min(d["Close"].min(), dn.min()) * 0.97
             ymax = max(d["Close"].max(), up.max(), tgt or 0) * 1.02
             fig.update_layout(height=300, margin=dict(l=0, r=0, t=6, b=0), hovermode="x unified",
@@ -403,18 +452,19 @@ with T_OVER:
     st.write("")
     a, b = st.columns(2, gap="medium")
     with a:
-        st.markdown(f"<div class='card'><div class='ct'>✅ Räägib poolt</div>{factor_rows(pos, True)}</div>",
+        st.markdown(f"<div class='card'><div class='ct'>Mis toetab</div>{factor_rows(pos, True)}</div>",
                     unsafe_allow_html=True)
     with b:
-        st.markdown(f"<div class='card'><div class='ct'>⚠️ Räägib vastu</div>{factor_rows(neg, False)}</div>",
+        st.markdown(f"<div class='card'><div class='ct'>Mis paneb mõtlema</div>{factor_rows(neg, False)}</div>",
                     unsafe_allow_html=True)
-    st.caption("NB: tugev tõus keskmistest kaugele loetakse siin ettevaatusmärgiks (keskmisele naasmine). "
-               "Miks – vt 📘 Õpetus.")
-    T_BT = st.expander("🧪 Kas mudel on selle aktsiaga varem töötanud?")
+    st.caption("Hea teada: kui hind on kaugele tõusnud, loeb see mudel seda pigem ettevaatusmärgiks – "
+               "nii on see ajaloos sagedamini läinud. Lähemalt lehe lõpus juhendis.")
+    st.markdown("<div class='section' style='margin-top:26px'>Lisainfo <span>– ava, kui tahad süveneda</span></div>",
+                unsafe_allow_html=True)
 
 # ---------------------------------------------------------------- Graafik
 
-with T_CHART:
+with st.expander("Hinnagraafik ja tehnilised näitajad"):
     per = st.segmented_control("Periood", ["3 kuud", "6 kuud", "1 aasta", "2 aastat", "5 aastat"], default="1 aasta",
                                label_visibility="collapsed") or "1 aasta"
     n = {"3 kuud": 63, "6 kuud": 126, "1 aasta": 252, "2 aastat": 504, "5 aastat": 1300}[per]
@@ -425,7 +475,7 @@ with T_CHART:
                         row_heights=[0.55, 0.13, 0.16, 0.16] if adv else [1],
                         subplot_titles=("Hind", "Maht", "RSI (14)", "MACD") if adv else None)
     fig.add_trace(go.Scatter(x=d.index, y=d["BB_up"], line=dict(width=0), showlegend=False, hoverinfo="skip"), 1, 1)
-    fig.add_trace(go.Scatter(x=d.index, y=d["BB_dn"], line=dict(width=0), fill="tonexty", fillcolor="rgba(139,92,246,0.08)",
+    fig.add_trace(go.Scatter(x=d.index, y=d["BB_dn"], line=dict(width=0), fill="tonexty", fillcolor="rgba(201,162,74,0.10)",
                              name="Bollinger", hoverinfo="skip"), 1, 1)
     fig.add_trace(go.Candlestick(x=d.index, open=d["Open"], high=d["High"], low=d["Low"], close=d["Close"], name="Hind",
                                  increasing_line_color=UP, decreasing_line_color=DOWN), 1, 1)
@@ -455,8 +505,7 @@ with T_CHART:
 
 # ---------------------------------------------------------------- Fundamentaal
 
-with T_FUND:
-    st.markdown("<div class='ct' style='font-size:18px'>🏢 Ettevõtte numbrid</div>", unsafe_allow_html=True)
+with st.expander("Ettevõtte numbrid"):
     rows = [
         ("Turuväärtus", big(info.get("marketCap"))),
         ("P/E (viimased 12 kuud)", f"{info['trailingPE']:.1f}" if info.get("trailingPE") else "–"),
@@ -496,9 +545,7 @@ with T_FUND:
 
 # ---------------------------------------------------------------- Analüütikud
 
-with T_ANAL:
-    st.write("")
-    st.markdown("<div class='ct' style='font-size:18px'>🎯 Analüütikud ja uudised</div>", unsafe_allow_html=True)
+with st.expander("Analüütikud ja uudised"):
     a, b = st.columns(2)
     with a:
         st.markdown("**Hinnasihid vs praegune hind**")
@@ -556,7 +603,7 @@ with T_ANAL:
 
 # ---------------------------------------------------------------- Ajalooline test
 
-with T_BT:
+with st.expander("Kas see mudel on selle aktsia puhul varem paika pidanud?"):
     st.markdown(
         f"""
 Kui hästi oleks **ainult tehniline osa** {ticker} puhul viimase ~4 aasta jooksul töötanud.
@@ -587,7 +634,7 @@ Fundamentaal- ja analüütikuandmeid ajaloo kohta pole, neid see test ei kata.
 
 # ---------------------------------------------------------------- Võrdlus
 
-with T_CMP:
+with st.expander("Võrdle mitut aktsiat"):
     lst = st.text_input("Tickerid komaga eraldatult", value="AAPL, MSFT, NVDA, GOOGL, AMZN, META, TSLA")
     if st.button("Võrdle", type="primary"):
         rows = []
@@ -599,7 +646,7 @@ with T_CMP:
                 inf = dt["info"]
                 row = {"Ticker": tk, "Nimi": (inf.get("shortName") or "")[:28], "Hind": round(rs["price"], 2)}
                 for lbl, v in rs["views"].items():
-                    row[f"{lbl}"] = f"{SIGNAL_ICON[v['signal']]} {v['signal']} ({v['score'] * 100:+.0f})"
+                    row[f"{lbl}"] = f"{LABEL[v['signal']]} ({v['score'] * 100:+.0f})"
                 row["12 näd oodatav"] = pct(rs["views"]["12 nädalat"]["exp_ret"])
                 row["26 näd oodatav"] = pct(rs["views"]["26 nädalat"]["exp_ret"])
                 row["Analüütikute siht"] = pct(inf["targetMeanPrice"] / rs["price"] - 1) if inf.get("targetMeanPrice") else "–"
@@ -616,8 +663,9 @@ with T_CMP:
 
 # ---------------------------------------------------------------- Õpetus
 
-with T_HELP:
-    st.subheader("📘 Kuidas seda lehte lugeda ja aktsiat analüüsida")
+with st.container():
+    st.markdown("<div class='section' style='margin-top:26px'>Juhend <span>– kuidas seda lehte lugeda</span></div>",
+                unsafe_allow_html=True)
     st.markdown(
         """
 Aktsia hinda mõjutavad kolm asja: **ettevõtte enda tulemused** (fundamentaal),
@@ -627,7 +675,7 @@ lahti seletatud: mida see näitab, miks seda vaja on ja kuidas seda vaadata.
 """
     )
 
-    with st.expander("🧭 Kiire tööjärjekord: kuidas ühte aktsiat 10 minutiga analüüsida", expanded=True):
+    with st.expander("Kiire tööjärjekord: kuidas ühte aktsiat 10 minutiga analüüsida"):
         st.markdown(
             """
 1. **Lihtne vastus** lehe ülaosas. Loe läbi „Järgmise 3 kuu vaade“ ja selle selgitus tavakeeles.
@@ -638,19 +686,19 @@ lahti seletatud: mida see näitab, miks seda vaja on ja kuidas seda vaadata.
    kasvu suhtes mõistlik? Kui palju on analüütikute hinnasiht praegusest kõrgemal?
 5. **Graafik.** Kas hind on tõusutrendis või languses? Lülita sisse „tehnilised näitajad“,
    kui tahad näha RSI-d ja MACD-d.
-6. **Kollased hoiatused:** tulemuste avaldus lähipäevil tähendab suuremat hinnakõikumist.
+6. **Kollakad märkused:** tulemuste avaldus lähipäevil tähendab suuremat hinnakõikumist.
 7. **Ülevaate lõpus „Kas mudel on varem töötanud?“** Kui korrelatsioon on negatiivne,
    usalda skoori selle aktsia puhul vähem.
 8. **Otsus on sinu.** Mudel on abivahend. Mõtle alati, kui palju oled valmis kaotama.
 """
         )
 
-    with st.expander("📊 Ülevaade: hinnangukaardid"):
+    with st.expander("Ülevaade: hinnangukaardid"):
         st.markdown(
             """
 | Rida | Mida näitab | Kuidas vaadata |
 |---|---|---|
-| **Signaal** (OST … MÜÜ) | Kokkuvõte skoorist | OST ≥ +25, KERGE OST +10…+25, HOIA −10…+10, KERGE MÜÜK −10…−25, MÜÜ ≤ −25 |
+| **Hinnang** (positiivne … ettevaatlik) | Kokkuvõte skoorist | Positiivne ≥ +25, pigem positiivne +10…+25, neutraalne −10…+10, pigem ettevaatlik −10…−25, ettevaatlik ≤ −25 |
 | **Skoor** | Kõigi gruppide kaalutud keskmine, −100 kuni +100 | Mida kaugemal nullist, seda tugevam signaal. Alla ±10 on sisuliselt neutraalne |
 | **Kindlus** | Kas grupid on omavahel ühel meelel | *Kõrge* = tehniline, fundamentaal ja analüütikud näitavad samas suunas. *Madal* = vastuolulised signaalid, ole ettevaatlik |
 | **Tõusu tõenäosus** | Hinnanguline võimalus, et hind on horisondi lõpus kõrgem | 50% = mündiviske. 60%+ on juba märgatav eelis. Üle 70% tuleb harva |
@@ -661,16 +709,16 @@ lahti seletatud: mida see näitab, miks seda vaja on ja kuidas seda vaadata.
 ajal ettevõtte tulemused. Seetõttu on 4 nädala hinnangus rohkem tehnilist analüüsi
 ja 26 nädala hinnangus rohkem fundamentaali ja analüütikuid.
 
-**Grupiskoorid** (tulpdiagramm) näitavad iga grupi skoori eraldi: sinine = positiivne,
-oranž = negatiivne.
+**Millest hinnang koosneb** näitab iga osa skoori eraldi: sinakas = positiivne,
+terrakota = negatiivne.
 
-**Hinnaprognoosi graafik:** sinine joon on viimase aasta hind, punktiir on oodatav tee
-ja helesinine lehter on 80% vahemik. Lehter läheb laiemaks, sest mida kaugemale
-tulevikku, seda ebakindlam. Lilla katkendjoon on analüütikute 12 kuu hinnasiht.
+**Hinnaprognoosi graafik:** sinakashall joon on viimase aasta hind, punktiir on oodatav tee
+ja kuldne lehter on 80% vahemik. Lehter läheb laiemaks, sest mida kaugemale
+tulevikku, seda ebakindlam. Hall katkendjoon on analüütikute 12 kuu hinnasiht.
 """
         )
 
-    with st.expander("📈 Graafik: küünlad, keskmised, RSI, MACD"):
+    with st.expander("Graafik: küünlad, keskmised, RSI, MACD"):
         st.markdown(
             """
 **Küünlad (candlesticks)**: iga küünal on üks päev. Roheline = päev lõppes tõusuga,
@@ -678,15 +726,15 @@ punane = langusega. Paks osa näitab avamis- ja sulgemishinda, peenikesed jooned
 kõrgeimat ja madalaimat hinda.
 
 **Libisevad keskmised (SMA)**: silutud hinnajoon, mis näitab trendi.
-- **SMA20** (kollane): lühike trend, umbes 1 kuu
-- **SMA50** (oranž): keskmine trend, umbes 2,5 kuud
-- **SMA200** (lilla): pikk trend, umbes 1 aasta. Kõige tähtsam joon
+- **SMA20** (ookerkollane): lühike trend, umbes 1 kuu
+- **SMA50** (terrakota): keskmine trend, umbes 2,5 kuud
+- **SMA200** (pruun): pikk trend, umbes 1 aasta. Kõige tähtsam joon
 - *Kuidas vaadata:* hind üle SMA200 = pikaajaline tõusutrend. Kui SMA50 lõikab SMA200
   alt üles, on see „kuldne rist“ (tõusumärk), ülevalt alla „surmarist“ (langusmärk).
 - ⚠️ *Selle mudeli eripära:* kui hind on SMA200-st **väga kaugel üleval** (nt +20%),
   on see ettevaatusmärk. Ajaloos on sellised aktsiad järgnevatel kuudel sageli jahtunud.
 
-**Bollingeri ribad** (hall ala): tavapärane kõikumisvahemik, 20 päeva keskmine ±2
+**Bollingeri ribad** (hele kuldne ala): tavapärane kõikumisvahemik, 20 päeva keskmine ±2
 standardhälvet. Hind üle ülemise riba = lühiajaliselt üle ostetud, alla alumise
 = üle müüdud. Kitsad ribad = vaikne periood, millele järgneb tihti suurem liikumine.
 
@@ -699,7 +747,7 @@ on „päris“, suured tegijad on asjas. Suur hinnamuutus väikese mahuga on n�
 - **45–65** = terve, rahulik tõus
 
 **MACD**: näitab, kas trend kiireneb või aeglustub.
-- Sinine joon üle oranži = tõusumomentum, all = langusmomentum
+- Sinakas joon üle terrakota-värvi joone = tõusumomentum, all = langusmomentum
 - Tulbad (histogramm) näitavad nende vahet. Kasvavad rohelised tulbad = tõus tugevneb,
   kahanevad = tõus väsib
 
@@ -708,7 +756,7 @@ panna: tavaliselt 2–3 × ATR praegusest hinnast allapoole.
 """
         )
 
-    with st.expander("🏢 Fundamentaal: kas ettevõte on hea ja kas hind on mõistlik"):
+    with st.expander("Fundamentaal: kas ettevõte on hea ja kas hind on mõistlik"):
         st.markdown(
             """
 | Näitaja | Mida näitab | Hea | Halb |
@@ -735,7 +783,7 @@ pankades kallis.
 """
         )
 
-    with st.expander("🎯 Analüütikud: mida suured pangad arvavad"):
+    with st.expander("Analüütikud: mida suured pangad arvavad"):
         st.markdown(
             """
 - **Hinnasiht** on analüütikute keskmine ootus hinnale **12 kuu pärast**. Vaata ka
@@ -751,7 +799,7 @@ pankades kallis.
 """
         )
 
-    with st.expander("🔁 Ülevenitatus ehk miks „tugev tõus“ on siin ettevaatusmärk"):
+    with st.expander("Ülevenitatus ehk miks „tugev tõus“ on siin ettevaatusmärk"):
         st.markdown(
             """
 Levinud tarkus ütleb: *„trend on sõber, osta tõusvat aktsiat“*. Testisin seda
@@ -770,7 +818,7 @@ ettevõte** on hea kombinatsioon, **odav + kehvad tulemused** võib olla lõks.
 """
         )
 
-    with st.expander("🧪 Ajalooline test: kas mudelit saab selle aktsia puhul usaldada"):
+    with st.expander("Ajalooline test: kas mudelit saab selle aktsia puhul usaldada"):
         st.markdown(
             """
 Test vaatab iga päeva viimase ~4 aasta jooksul: mis oli tol päeval tehniline skoor
@@ -789,7 +837,7 @@ ajalugu pole saadaval.
 """
         )
 
-    with st.expander("⚠️ Riskid ja head tavad"):
+    with st.expander("Riskid ja head tavad"):
         st.markdown(
             """
 - **Ükski mudel ei ennusta tulevikku kindlalt.** 60% tõenäosus tähendab, et 4 korral 10-st läheb teisiti.
@@ -804,7 +852,7 @@ ajalugu pole saadaval.
 """
         )
 
-    with st.expander("📖 Sõnastik"):
+    with st.expander("Sõnastik"):
         st.markdown(
             """
 - **Ticker**: aktsia lühinimi börsil (AAPL = Apple)
@@ -819,7 +867,7 @@ ajalugu pole saadaval.
         )
 
 
-    with st.expander("⚙️ Kuidas hinnang arvutatakse"):
+    with st.expander("Kuidas hinnang arvutatakse"):
         st.markdown(
             """
 **4 gruppi, igaüks −100 … +100:**
@@ -850,46 +898,49 @@ tootlus (~7% aastas) on arvestatud.
 # ---------------------------------------------------------------- Päeva ideed
 # (täidetakse viimasena, et ülejäänud leht jõuaks enne skaneerimist ekraanile)
 
-with T_IDEAS:
+def mini_row(tk, name, sub, price_html, pill_html, key, cols_ratio=(4.2, 1)):
+    a, b = st.container(key=f"mr_{key}").columns(cols_ratio, vertical_alignment="center")
+    a.markdown(f"""<div class="wrow"><div class="wl"><div class="wt">{esc(tk)} <span class="wn">{esc(name)}</span></div>
+<div class="ws">{sub}</div></div><div class="wr"><div class="wp">{price_html}</div>{pill_html}</div></div>""",
+               unsafe_allow_html=True)
+    b.button("Vaata", key=key, on_click=_open, args=(tk,), use_container_width=True)
+
+
+with watch_box:
+    st.markdown("<div class='ct'>Minu jälgimisnimekiri<span class='hint'>kolme kuu vaade</span></div>", unsafe_allow_html=True)
+    wl = st.session_state.watch
+    if not wl:
+        st.markdown("<div class='fg' style='font-size:14px'>Nimekiri on tühi. Ava mõni aktsia ja vajuta "
+                    "„Lisa jälgimisnimekirja“.</div>", unsafe_allow_html=True)
+    else:
+        with st.spinner("Laen nimekirja…"):
+            items = watch_summary(tuple(wl))
+        for it in items:
+            if it.get("error"):
+                mini_row(it["ticker"], "", "andmeid ei leitud", "–", "", f"w_{it['ticker']}")
+                continue
+            ph = f"{money(it['price'], it['cur'])} <small class='{tone(it['chg'])}'>{pct(it['chg'])}</small>"
+            mini_row(it["ticker"], it["name"], "", ph, sig_pill(it["v12"]["signal"]), f"w_{it['ticker']}")
+    with st.popover("Muuda nimekirja", use_container_width=False):
+        st.text_input("Tickerid komaga eraldatult (kuni 15)", value=", ".join(wl), key="watch_edit", on_change=_set_watch)
+        st.caption("Nimekiri jääb lingi sisse. Lisa leht järjehoidjatesse, siis on see järgmisel korral alles.")
+
+with ideas_box:
     today = dt.date.today().isoformat()
-    st.markdown(f"""<div class="card"><div class="ct">💡 Päeva 3 ideed analüüsiks<span class="hint">{dt.date.today():%d.%m.%Y}</span></div>
-<div class="fg" style="font-size:13.5px;color:var(--ink2)">Mudel skaneerib iga päev {len(UNIVERSE)} USA suurettevõtet ja valib 3 kõrgeima
-skooriga aktsiat eri sektoritest (12 + 26 nädala vaade). Need on <b>ideed edasiseks uurimiseks</b>, mitte ostusoovitus.</div></div>""",
-                unsafe_allow_html=True)
-    st.write("")
-    with st.spinner("Skaneerin aktsiaid… (esimest korda päevas ~30 sek)"):
+    st.markdown(f"<div class='ct'>Tänased ideed<span class='hint'>{dt.date.today():%d.%m.%Y}</span></div>", unsafe_allow_html=True)
+    with st.spinner("Vaatan aktsiad läbi… esimesel korral päevas võtab see umbes poole minuti."):
         picks, scanned = daily_ideas(today)
     if not picks:
-        st.info("Ideid ei õnnestunud leida. Andmeallikas võib olla ajutiselt kättesaamatu. Proovi hiljem uuesti.")
+        st.markdown("<div class='fg' style='font-size:14px'>Täna ei õnnestunud andmeid kätte saada. "
+                    "Proovi natukese aja pärast uuesti.</div>", unsafe_allow_html=True)
     else:
-        cols = st.columns(len(picks), gap="medium")
-        for i, (col, p) in enumerate(zip(cols, picks), start=1):
-            with col:
-                t = SIG_TONE[p["v26"]["signal"]]
-                pros = "".join(f"<li>{esc(x)}</li>" for x in p["pros"])
-                con = f"<div class='fg' style='margin-top:8px;color:#c9302f'>⚠️ {esc(p['con'])}</div>" if p["con"] else ""
-                warn = "<div class='note' style='margin-top:10px'>📅 Tulemused lähipäevil – suurem kõikumine</div>" if p["earnings_soon"] else ""
-                ups = f"<span class='pill {tone(p['upside'])}'>{pct(p['upside'])}</span>" if p["upside"] is not None else "–"
-                st.markdown(f"""
-<div class="card sig" style="--accent:{TONE_COLOR[t]}">
-  <div class="top"><span class="h">#{i} · {esc(p['sector'])}</span><span class="conf">skoor {p['score'] * 100:+.0f}</span></div>
-  <div style="font-size:22px;font-weight:800;margin-top:10px;color:var(--ink)">{esc(p['ticker'])}</div>
-  <div class="fg" style="font-size:13px">{esc(p['name'])} · {money(p['price'])}</div>
-  <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">
-    <span class='fg' style='align-self:center'>12 näd</span>{sig_pill(p['v12']['signal'])}
-    <span class='fg' style='align-self:center'>26 näd</span>{sig_pill(p['v26']['signal'])}</div>
-  <div class="stats">
-    <div class="stat"><div class="k">26 näd oodatav</div><div class="v" style="color:{TONE_COLOR[tone(p['v26']['exp_ret'])]}">{pct(p['v26']['exp_ret'])}</div></div>
-    <div class="stat"><div class="k">Analüütikute siht</div><div class="v">{ups}</div></div>
-  </div>
-  <div class="ct" style="margin:14px 0 4px;font-size:13px">Miks</div>
-  <ul style="margin:0 0 0 18px;padding:0;font-size:13.5px;color:var(--ink2);line-height:1.5">{pros}</ul>
-  {con}{warn}
-</div>""", unsafe_allow_html=True)
-                st.button(f"Ava {p['ticker']} analüüs →", key=f"idea_{p['ticker']}", on_click=_open, args=(p["ticker"],),
-                          use_container_width=True)
-        st.caption(f"Skaneeritud {scanned}/{len(UNIVERSE)} aktsiat. Värskendatakse kord päevas. "
-                   "Enne otsust vaata alati läbi täisanalüüs, eriti fundamentaal ja riskid.")
+        for p in picks:
+            why = p["pros"][0] if p["pros"] else ""
+            why = esc(why if len(why) <= 60 else why[:57].rstrip() + "…")
+            ph = money(p["price"])
+            mini_row(p["ticker"], p["name"], f"{esc(p['sector'])} · {why}", ph, sig_pill(p["v12"]["signal"]), f"i_{p['ticker']}")
+        st.markdown(f"<div class='fg'>Valitud {scanned} suurema USA ettevõtte seast, igast valdkonnast üks. "
+                    "Mõtted lähemaks uurimiseks, mitte ostusoovitus.</div>", unsafe_allow_html=True)
 
-st.markdown("<div class='foot'>Andmed: Yahoo Finance (kuni 15 min viitega) · Reeglipõhine mudel · "
-            "Informatiivne tööriist, mitte investeerimisnõuanne</div>", unsafe_allow_html=True)
+st.markdown("<div class='foot'>Andmed tulevad Yahoo Finance'ist ja võivad olla kuni 15 minutit hiljaks jäänud.<br>"
+            "See on abivahend oma mõtete korrastamiseks, mitte investeerimisnõuanne.</div>", unsafe_allow_html=True)

@@ -197,7 +197,7 @@ def tech_texts(row: pd.Series, bench_3m: float | None) -> dict:
     def pct(x):
         return f"{x * 100:+.1f}%"
     r = row["RSI"]
-    rsi_txt = "üle müüdud" if r < 30 else "nõrk" if r < 45 else "terve tõusumomentum" if r <= 65 else "kõrge" if r <= 75 else "üle ostetud"
+    rsi_txt = "pigem üle müüdud" if r < 30 else "veidi nõrk" if r < 45 else "rahulik tõus" if r <= 65 else "üsna kõrge" if r <= 75 else "pigem üle ostetud"
     b = row["BB_pct"]
     bb_txt = "üle ülemise riba" if b > 1 else "alla alumise riba" if b < 0 else "ribade sees"
     h = row["MACD_hist"]
@@ -348,7 +348,7 @@ def analyze(data: dict, bench: pd.Series | None) -> dict:
     for name, s in ts_now.items():
         factors.append(("tech_short", name, float(s), texts.get(name, name)))
     for name, s in tl_now.items():
-        hint = " → alla venitatud, tõusuruum" if s > 0.05 else " → üles venitatud, jahtumisrisk" if s < -0.05 else ""
+        hint = " – tavapärasest madalamal" if s > 0.05 else " – tavapärasest kõrgemal" if s < -0.05 else ""
         factors.append(("tech_long", name, float(s), texts.get(name, name) + hint))
     for name, s, txt in fund:
         factors.append(("fund", name, s, txt))
@@ -360,9 +360,9 @@ def analyze(data: dict, bench: pd.Series | None) -> dict:
     if ed is not None:
         days_to = (ed - pd.Timestamp.today().normalize()).days
         if 0 <= days_to <= 14:
-            warnings_.append(f"Järgmine tulemuste avaldus {ed:%d.%m.%Y} ({days_to} päeva pärast) – hind võib siis järsult liikuda.")
+            warnings_.append(f"Ettevõte avaldab tulemused {ed:%d.%m.%Y} ({days_to} päeva pärast). Siis võib hind tavalisest rohkem liikuda.")
     if sigma_d * math.sqrt(252) > 0.5:
-        warnings_.append(f"Väga volatiilne aktsia (aastane volatiilsus {sigma_d * math.sqrt(252) * 100:.0f}%). Hinnavahemikud on laiad.")
+        warnings_.append(f"See aktsia kõigub tavalisest rohkem (umbes {sigma_d * math.sqrt(252) * 100:.0f}% aastas), seega on hinnavahemikud laiad.")
     if not fund:
         warnings_.append("Fundamentaalandmed puuduvad (nt ETF või väike ettevõte) – hinnang põhineb tehnilisel analüüsil.")
     if not anal:
