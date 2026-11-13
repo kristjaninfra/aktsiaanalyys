@@ -164,3 +164,9 @@ small.up { color:var(--up); } small.down { color:var(--down); } small.flat { col
   [class*="st-key-mr_"] [data-testid="stHorizontalBlock"] .stButton button { padding: 4px 6px; font-size: 13px; min-height: 34px; }
   .wn { display:block; margin-left:0; }
 }
+
+/* "Vaata" nupul kindel laius igal ekraanil */
+[class*="st-key-mr_"] [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; gap: 10px !important; }
+[class*="st-key-mr_"] [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child { flex: 1 1 auto !important; min-width: 0 !important; width: auto !important; }
+[class*="st-key-mr_"] [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child { flex: 0 0 76px !important; min-width: 76px !important; width: 76px !important; }
+[class*="st-key-mr_"] .stButton button { white-space: nowrap; padding: 4px 8px; }
